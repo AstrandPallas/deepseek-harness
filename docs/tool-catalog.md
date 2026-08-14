@@ -26,6 +26,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-str-replace-editor` | `str_replace_editor` | `ctx.tools`, `ctx.fs` | `tool/call`, `fs/observed after view presence/absence, edit absence, or successful mutation`, `tool/result` | - | Standalone view/create/unique literal replace/line insert tool over the filesystem seam; it composes with any shell or terminal API. |
 | `@deepseek-ai/dsh-tool-fs` | `edit`, `read`, `read_image`, `write` | `ctx.tools`, `ctx.fs`, `ctx.systemPrompt`, `ctx.attachments (read_image registration)`, `ctx.llm + an image-capable route (read_image execution)` | `tool/call`, `fs/write-intent or fs/edit-intent for mutations`, `fs/observed after read presence/absence or successful file operation`, `durable attachment (read_image)`, `tool/result` | - | The read-before-write/edit policy is added by `@deepseek-ai/dsh-fs-observation-policy` (an `fs/*` event-gate plugin, no schema change); a deployment that loads these tools is expected to also load it. `read_image` is not registered without `ctx.attachments`; its schema is route-independent, and execution refuses unless the exact routed model declares image input. |
 | `@deepseek-ai/dsh-tool-fs-search` | `glob`, `grep` | `ctx.tools`, `ctx.subprocess`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | glob and grep are unconditional discovery tools that spawn the packaged ripgrep binary (`@vscode/ripgrep`) through ctx.subprocess as ordinary foreground calls (never background jobs) — no host `rg` install and no shell layer. The catalog uses `sampleOverCapGlobResults: true`; deployments must choose that behavior explicitly. Capped results save the complete formatted list through the optional ctx.spillStore backend; returned locators are follow-up-readable/searchable when the backend exposes local paths in co-located deployments. |
+| `@deepseek-ai/dsh-tool-repo-map` | `repo_map` | `ctx.tools`, `ctx.agent at execution time (session header cwd)`, `git on PATH at execution time for tracked-file listing` | `tool/call`, `tool/result` | - | repo_map lists the workspace (git-tracked plus unignored untracked files in a repository, a directory walk otherwise), extracts per-language definitions, ranks them with a personalized reference-graph PageRank, and returns a token-budgeted structure map. Read-only: nothing durable beyond the call/result pair. |
 | `@deepseek-ai/dsh-tool-terminal` | `terminal_close`, `terminal_list`, `terminal_open`, `terminal_read`, `terminal_send`, `terminal_signal` | `ctx.tools`, `ctx.terminals`, `ctx.systemPrompt`, `ctx.jobs at call time for run_in_background` | `tool/call`, `tool/result` | - | The six terminal tools are opt-in and complement one-shot shell/filesystem tools. `terminal_send(run_in_background: true)` registers with `ctx.jobs`; TUI, named key sequences, BEL, resize, auto-start, and cross-agent sharing are absent from the schema. |
 | `@deepseek-ai/dsh-tool-goal` | `create_goal`, `get_goal`, `update_goal` | `ctx.tools`, `ctx.agents`, `ctx.goals`, `ctx.systemPrompt`, `a calling Agent in an authorized open turn` | `tool/call`, `goal/change for mutations`, `tool/result` | - | create, edit, pause, and resume require direct-human root authority; complete and blocked also accept the exact current goal round. The default blocked lower bound is three admitted rounds. |
 | `@deepseek-ai/dsh-schedule` | `schedule_create`, `schedule_delete`, `schedule_list` | `ctx.tools`, `ctx.sessions`, `Session persistence`, `a future live root Agent` | `tool/call`, `schedule/change create or delete`, `tool/result` | - | Registered only inside live root Agent scopes created after the opt-in Schedule plugin loads. Version 1 accepts after_seconds, explicit absolute at, and bounded fixed-rate every_seconds, and discloses session-local delivery; management reads and mutations require the shared Session persistence barrier. |
@@ -802,6 +803,47 @@ Source: [`packages/fs/tool-fs-search/src/index.ts`](../packages/fs/tool-fs-searc
 
 glob and grep are unconditional discovery tools that spawn the packaged ripgrep binary (`@vscode/ripgrep`) through ctx.subprocess as ordinary foreground calls (never background jobs) — no host `rg` install and no shell layer. The catalog uses `sampleOverCapGlobResults: true`; deployments must choose that behavior explicitly. Capped results save the complete formatted list through the optional ctx.spillStore backend; returned locators are follow-up-readable/searchable when the backend exposes local paths in co-located deployments.
 
+<a id="deepseek-aidsh-tool-repo-map"></a>
+
+## `@deepseek-ai/dsh-tool-repo-map`
+
+### `repo_map`
+
+Build a compact, ranked map of the workspace codebase: file paths with their definitions (classes, functions, types, headings), ordered by relevance. Use this to orient in an unfamiliar repository instead of reading many files.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "focus": {
+      "type": "array",
+      "description": "Path substrings to prioritize; matching files are boosted to the top of the map.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mentions": {
+      "type": "array",
+      "description": "Identifier names (classes, functions) the conversation is currently discussing; files defining or using them are boosted.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "chat_files": {
+      "type": "array",
+      "description": "Paths of files the conversation has been reading or touching; they are pinned higher and their references are amplified.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+```
+
+Source: [`packages/fs/tool-repo-map/src/index.ts`](../packages/fs/tool-repo-map/src/index.ts)
+
+repo_map lists the workspace (git-tracked plus unignored untracked files in a repository, a directory walk otherwise), extracts per-language definitions, ranks them with a personalized reference-graph PageRank, and returns a token-budgeted structure map. Read-only: nothing durable beyond the call/result pair.
+
 <a id="deepseek-aidsh-tool-terminal"></a>
 
 ## `@deepseek-ai/dsh-tool-terminal`
@@ -1520,6 +1562,11 @@ Delegate a self-contained task to a subagent (a separate agent that works in its
     "run_in_background": {
       "type": "boolean",
       "description": "Whether to run as a background job and return its id. Defaults to false; collect with job_output or stop with job_kill."
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Optional object-rooted JSON Schema the child's final structured result must satisfy. When set, the child reports through a dedicated structured capture and this tool returns the validated object instead of free text. Leave unset for a normal text report.",
+      "additionalProperties": true
     }
   },
   "required": [

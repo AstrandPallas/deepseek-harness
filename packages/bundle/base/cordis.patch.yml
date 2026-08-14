@@ -72,6 +72,22 @@
     - id: llm-retry
       name: '@deepseek-ai/dsh-llm-retry'
 
+    # Cross-provider fallback, registered after llm-retry so same-route retries
+    # exhaust first. Dormant until a deployment supplies fallback rules.
+    - id: llm-fallback
+      name: '@deepseek-ai/dsh-llm-fallback'
+
+    # Declarative role-to-route routing. Dormant until a deployment supplies
+    # rules; a rules block replaces scattered per-tool agentOptions.
+    - id: llm-router
+      name: '@deepseek-ai/dsh-llm-router'
+
+    # Session-plane USD cost ledger: reads durable usage, prices from the
+    # `cost-meter` settings section, exposes the `cost` tool, and enforces an
+    # optional per-session budget. Zero-priced until a deployment sets rates.
+    - id: cost-meter
+      name: '@deepseek-ai/dsh-cost-meter'
+
     # User-settings document (`$DSH_HOME/settings.yaml`, hot-reloaded): a
     # `llm-deepseek:` or `llm-pi-ai:` section there overrides the adapter entries
     # below without a restart, and is what the web Models page writes.

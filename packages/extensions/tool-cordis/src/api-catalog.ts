@@ -3710,7 +3710,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'RequestErrorAction',
-    declaration: 'export type RequestErrorAction = {\n    kind: \'retry\';\n} | undefined;',
+    declaration: 'export type RequestErrorAction = {\n    kind: \'retry\';\n    provider?: string;\n    model?: string;\n} | undefined;',
   },
   {
     name: 'RequestHeaderReason',

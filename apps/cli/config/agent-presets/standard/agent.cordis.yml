@@ -61,6 +61,9 @@
   config:
     sampleOverCapGlobResults: false
 
+- id: tool-repo-map
+  name: '@deepseek-ai/dsh-tool-repo-map'
+
 # ── background jobs ────────────────────────────────────────────────────────
 
 # Only the model-facing controls. The task REGISTRY stays on the host plane:
