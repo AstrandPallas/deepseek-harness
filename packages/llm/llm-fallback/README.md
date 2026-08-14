@@ -1,5 +1,7 @@
 # dsh-llm-fallback
 
+English | [中文](README.zh.md)
+
 Cross-provider fallback on the agent loop's request extension points. After same-route retries (`dsh-llm-retry`) exhaust, a directional rule can retry a terminal failure on another provider route; after a provider-level failure, the source route is cooled down and further requests on it are preempted until it recovers.
 
 ## What it does
