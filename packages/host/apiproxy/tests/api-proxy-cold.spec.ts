@@ -416,6 +416,114 @@ describe('Remote Agent and Session lookup policy', () => {
     expect(resume).not.toHaveBeenCalled()
     expect(inspect).toHaveBeenCalledOnce()
   })
+
+  it('restores the fixed delegation statement for a legacy child resume', async () => {
+    const ctx = new Context()
+    await ctx.plugin(TypertRegistry)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(UserQuestionService)
+    const childId = sid('session-legacy-worker')
+    // A child spawned before the origin marker still carries its depth stamp.
+    const childMeta = header(childId, 1000, { parentSession: sid('session-parent'), delegationDepth: 1 })
+    const inspect = vi.fn(() => Promise.resolve({ meta: childMeta, events: [] as SessionEvent[] }))
+    ctx.provide('sessionPersistence', {
+      list: () => Promise.resolve([childMeta]),
+      inspect,
+      locate: () => undefined,
+    } as never)
+    const resumedSession = { id: childId, header: childMeta, events: [] } as unknown as import('@deepseek-ai/dsh-session').Session
+    const resumedAgent = { id: childId, session: resumedSession, status: 'idle', ctx } as Agent
+    let captured: { agentOptions?: unknown; setup?: (agentCtx: Context) => Promise<void> } | undefined
+    const resume = vi.spyOn(ctx.agents, 'resume').mockImplementation(async (request) => {
+      captured = request as typeof captured
+      return { agent: resumedAgent, dispose: () => Promise.resolve() }
+    })
+    const defaultAgentLookup = ctx.typert.lookups.get('agent')
+    createApiProxy(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
+    await vi.waitFor(() => {
+      expect(ctx.typert.lookups.get('agent')).not.toBe(defaultAgentLookup)
+    })
+    const agentLookup = ctx.typert.lookups.get('agent')
+    if (agentLookup === undefined) throw new Error('core lookup provider was not replaced')
+
+    await expect(agentLookup.resolve(childId)).resolves.toBe(resumedAgent)
+    expect(resume).toHaveBeenCalledOnce()
+    expect(captured?.agentOptions).toEqual({ provider: 'p', model: 'm' })
+    const section = vi.fn()
+    const context = vi.fn()
+    const restrict = vi.fn()
+    const agentCtx = {
+      agent: resumedAgent,
+      systemPrompt: { section, context },
+      tools: { restrict },
+    } as unknown as Context
+    await captured?.setup?.(agentCtx)
+    expect(context).toHaveBeenCalledWith(expect.objectContaining({ name: 'subagent:delegation' }))
+    expect(section).not.toHaveBeenCalled()
+    expect(restrict).not.toHaveBeenCalled()
+  })
+
+  it('restores the descriptor persona, tool scope, and route for a continuable child resume', async () => {
+    const ctx = new Context()
+    await ctx.plugin(TypertRegistry)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(UserQuestionService)
+    const childId = sid('session-descriptor-worker')
+    const childMeta = header(childId, 1000, { parentSession: sid('session-parent'), delegationDepth: 1 })
+    const descriptor = {
+      type: 'subagent/descriptor',
+      seq: 0,
+      time: 1,
+      data: {
+        version: 2,
+        mode: 'continuable',
+        provider: 'spawn',
+        label: 'worker',
+        agentProvider: 'local',
+        agentModel: 'local-model',
+        persona: 'You are a delegated worker.',
+        toolFilter: { deny: ['subagent'] },
+      },
+    } as SessionEvent<'subagent/descriptor'>
+    const inspect = vi.fn(() => Promise.resolve({ meta: childMeta, events: [descriptor] as SessionEvent[] }))
+    ctx.provide('sessionPersistence', {
+      list: () => Promise.resolve([childMeta]),
+      inspect,
+      locate: () => undefined,
+    } as never)
+    const resumedSession = { id: childId, header: childMeta, events: [] } as unknown as import('@deepseek-ai/dsh-session').Session
+    const resumedAgent = { id: childId, session: resumedSession, status: 'idle', ctx } as Agent
+    let captured: { agentOptions?: unknown; setup?: (agentCtx: Context) => Promise<void> } | undefined
+    const resume = vi.spyOn(ctx.agents, 'resume').mockImplementation(async (request) => {
+      captured = request as typeof captured
+      return { agent: resumedAgent, dispose: () => Promise.resolve() }
+    })
+    const defaultAgentLookup = ctx.typert.lookups.get('agent')
+    createApiProxy(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
+    await vi.waitFor(() => {
+      expect(ctx.typert.lookups.get('agent')).not.toBe(defaultAgentLookup)
+    })
+    const agentLookup = ctx.typert.lookups.get('agent')
+    if (agentLookup === undefined) throw new Error('core lookup provider was not replaced')
+
+    await expect(agentLookup.resolve(childId)).resolves.toBe(resumedAgent)
+    expect(resume).toHaveBeenCalledOnce()
+    expect(captured?.agentOptions).toEqual({ provider: 'local', model: 'local-model' })
+    const section = vi.fn()
+    const context = vi.fn()
+    const restrict = vi.fn()
+    const agentCtx = {
+      agent: resumedAgent,
+      systemPrompt: { section, context },
+      tools: { restrict },
+    } as unknown as Context
+    await captured?.setup?.(agentCtx)
+    expect(context).toHaveBeenCalledWith(expect.objectContaining({ name: 'subagent:delegation' }))
+    expect(section).toHaveBeenCalledWith({ name: 'deployment:persona', order: 0, text: 'You are a delegated worker.' })
+    expect(restrict).toHaveBeenCalledWith({ deny: ['subagent'] })
+  })
 })
 
 describe('subagent ownership fence', () => {

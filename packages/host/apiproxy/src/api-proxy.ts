@@ -20,7 +20,7 @@ import { isAppendSurfaceEvent, isJsonValue } from '@deepseek-ai/dsh-session'
 import type { JsonValue, Session, SessionEvent, SessionEventMap, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionSearchCursor } from '@deepseek-ai/dsh-session-query'
-import { SubagentError } from '@deepseek-ai/dsh-subagent'
+import { foldSubagentDescriptor, SUBAGENT_DELEGATION_CONTEXT, SubagentError } from '@deepseek-ai/dsh-subagent'
 import type { SubagentListEntry as CatalogSubagentListEntry } from '@deepseek-ai/dsh-subagent'
 import { isUserInvocable } from '@deepseek-ai/dsh-skill'
 import type { Workspace, WorkspaceRecord } from '@deepseek-ai/dsh-workspace'
@@ -1053,10 +1053,29 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     ?? DEFAULT_SESSION_LOG_COMPRESSION_LEVEL
   const coldBlankProbeMaxBytes = defaults.coldBlankProbeMaxBytes
     ?? DEFAULT_COLD_BLANK_PROBE_MAX_BYTES
+  /**
+   * The durable child markers: a spawn stamps the delegation depth on the
+   * header, and newer children also carry the navigation origin. Either marks
+   * a session whose worker identity must survive a standalone resume.
+   */
+  const isSubagentChild = (meta: SessionHeader | undefined): boolean =>
+    meta !== undefined && (meta.origin === 'subagent' || (meta.delegationDepth ?? 0) > 0)
+
   /** The seed model each create/resume declares; re-read so it never goes stale. */
-  const agentOptions = (): AgentOptions => {
+  const agentOptions = (
+    inspected?: { meta: SessionHeader; events: readonly SessionEvent[] },
+  ): AgentOptions => {
     const { provider, model } = defaults.defaultModelSelection()
-    return { provider, model }
+    if (!isSubagentChild(inspected?.meta)) return { provider, model }
+    // A subagent child's own route is a spawn fact, recorded in its durable
+    // descriptor; the Host default selection is the fallback for legacy
+    // children that predate the descriptor.
+    const descriptor = inspected === undefined ? undefined : foldSubagentDescriptor(inspected.events)
+    if (descriptor?.mode !== 'continuable') return { provider, model }
+    return {
+      provider: descriptor.agentProvider ?? provider,
+      model: descriptor.agentModel ?? model,
+    }
   }
   type WebModelSelectionRef = ModelSelectionRef & { current: ModelSelection }
   const selections = new WeakMap<Agent, WebModelSelectionRef>()
@@ -1211,8 +1230,30 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
   // restore that history under the old tool set.
   const agentFor = createApiRemoteAgentResolver(ctx, {
     agentOptions,
-    setup: async ({ meta, events }) =>
-      (await composeAgent(resolveSessionPreset({ header: meta, events }))).setup,
+    setup: async ({ meta, events }) => {
+      const composed = await composeAgent(resolveSessionPreset({ header: meta, events }))
+      const child = isSubagentChild(meta)
+      // A resumed subagent child keeps its worker identity. Every child gets
+      // the fixed delegation statement; the durable descriptor additionally
+      // restores the spawn-time persona, tool scope, and route.
+      const descriptor = child ? foldSubagentDescriptor(events) : undefined
+      const childComposition = descriptor?.mode === 'continuable' ? descriptor : undefined
+      return async (agentCtx: Context) => {
+        await composed.setup(agentCtx)
+        if (!child) return
+        agentCtx.systemPrompt.context({
+          name: 'subagent:delegation',
+          order: 120,
+          text: SUBAGENT_DELEGATION_CONTEXT,
+        })
+        if (childComposition?.persona !== undefined) {
+          agentCtx.systemPrompt.section({ name: 'deployment:persona', order: 0, text: childComposition.persona })
+        }
+        if (childComposition?.toolFilter !== undefined) {
+          agentCtx.tools.restrict(childComposition.toolFilter)
+        }
+      }
+    },
   })
 
   /** Send one transient frame to every connected mux consumer. */

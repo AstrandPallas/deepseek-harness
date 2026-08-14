@@ -20,8 +20,17 @@ export type ApiRemoteAgentResult =
 
 /** Resume configuration supplied by the owning Host composition. */
 export interface ApiRemoteAgentOptions {
-  /** Read the per-Agent defaults when a cold identity must resume. */
-  readonly agentOptions?: () => AgentOptions
+  /**
+   * Read the per-Agent defaults when a cold identity must resume. Receives
+   * the resumed session so a Host can rebuild a recorded route: a subagent
+   * child's own provider and model live in its durable descriptor, not in
+   * the Host's default model selection.
+   * @param session - the resumed session's persisted header and event log.
+   * @returns the Agent options for this resume.
+   */
+  readonly agentOptions?: (
+    session: { meta: SessionHeader; events: readonly SessionEvent[] },
+  ) => AgentOptions
   /**
    * Build the Host-specific Agent-scope composition completed before
    * publication. Keyed by the resumed session itself because what a Host
@@ -161,7 +170,7 @@ export function createApiRemoteAgentResolver(
           }
           const handle = await ctx.agents.resume({
             resumeSessionId: sessionId,
-            ...options.agentOptions === undefined ? {} : { agentOptions: options.agentOptions() },
+            ...options.agentOptions === undefined ? {} : { agentOptions: options.agentOptions(inspected) },
             ...setup === undefined ? {} : { setup },
           })
           return handle.agent
