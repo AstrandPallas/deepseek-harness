@@ -105,7 +105,7 @@ describe('dsh-tool-subagent', () => {
     const schema = ctx.tools.schemas().find(s => s.name === 'subagent')
     expect(schema).toBeDefined()
     const props = (schema!.parameters as { properties?: Record<string, unknown> }).properties ?? {}
-    expect(Object.keys(props).sort()).toEqual(['description', 'prompt', 'run_in_background'])
+    expect(Object.keys(props).sort()).toEqual(['description', 'output_schema', 'prompt', 'run_in_background'])
     expect(schema!.description).toContain('job_output')
   })
 
@@ -113,7 +113,7 @@ describe('dsh-tool-subagent', () => {
     const ctx = await setup({ provider: 'mock', enableRunInBackground: false })
     const schema = ctx.tools.schemas().find(s => s.name === 'subagent')
     const props = (schema!.parameters as { properties?: Record<string, unknown> }).properties ?? {}
-    expect(Object.keys(props).sort()).toEqual(['description', 'prompt'])
+    expect(Object.keys(props).sort()).toEqual(['description', 'output_schema', 'prompt'])
     expect(schema!.description).not.toContain('job_output')
   })
 
@@ -274,6 +274,124 @@ describe('dsh-tool-subagent', () => {
 
     await callSubagent(ctx, { description: 'd', prompt: 'p' })
     expect(seen?.agentOptions).toEqual({ model: 'child-model' })
+  })
+
+  it('forwards output_schema into the start request and returns the child structured result', async () => {
+    const schema = { type: 'object', properties: { answer: { type: 'number' } }, required: ['answer'] }
+    let seen: { outputSchema?: unknown } | undefined
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    ctx.subagents.registerProvider({
+      name: 'structured',
+      capabilities: { outputSchema: true, depthLimit: false, toolFilter: false, persona: false },
+      inheritsParentContext: false,
+      start: async (request) => {
+        seen = request
+        return {
+          id: SessionId('structured-child'),
+          localAgent: undefined,
+          result: Promise.resolve({
+            output: [{ type: 'text', text: 'unused' }],
+            stopReason: 'completed' as const,
+            structured: { answer: 42 },
+          }),
+          dispose: async () => {},
+        }
+      },
+    })
+    await ctx.plugin(tool, { provider: 'structured', maxDepth: 'provider-managed' })
+
+    const result = await callSubagent(ctx, { description: 'd', prompt: 'p', output_schema: schema })
+    expect(seen?.outputSchema).toEqual(schema)
+    expect(result.isError).toBe(false)
+    expect(text(result)).toBe('{"answer":42}')
+  })
+
+  it('omits output_schema for an incapable provider and rejects a smuggled use', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    ctx.subagents.registerProvider({
+      name: 'plain',
+      capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+      inheritsParentContext: false,
+      start: async () => ({
+        id: SessionId('plain-child'),
+        localAgent: undefined,
+        result: Promise.resolve({ output: [{ type: 'text', text: 'ok' }], stopReason: 'completed' as const }),
+        dispose: async () => {},
+      }),
+    })
+    await ctx.plugin(tool, { provider: 'plain', maxDepth: 'provider-managed' })
+
+    const schema = ctx.tools.schemas().find(entry => entry.name === 'subagent')
+    expect(Object.keys(schema?.parameters ?? {})).not.toContain('output_schema')
+
+    const result = await callSubagent(ctx, { description: 'd', prompt: 'p', output_schema: { type: 'object' } })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('outputSchema capability')
+  })
+
+  it('retries a foreground run whose child stopped at max-tokens', async () => {
+    let starts = 0
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    ctx.subagents.registerProvider({
+      name: 'retryable',
+      capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+      inheritsParentContext: false,
+      start: async () => {
+        starts += 1
+        return {
+          id: SessionId(`retry-child-${starts}`),
+          localAgent: undefined,
+          result: Promise.resolve(starts === 1
+            ? { output: [{ type: 'text', text: 'partial' }], stopReason: 'max-tokens' as const }
+            : { output: [{ type: 'text', text: 'done' }], stopReason: 'completed' as const }),
+          dispose: async () => {},
+        }
+      },
+    })
+    await ctx.plugin(tool, { provider: 'retryable', maxDepth: 'provider-managed', retries: 1 })
+
+    const result = await callSubagent(ctx, { description: 'd', prompt: 'p' })
+    expect(starts).toBe(2)
+    expect(result.isError).toBe(false)
+    expect(text(result)).toBe('done')
+  })
+
+  it('stops retrying at the configured cap and surfaces the partial output', async () => {
+    let starts = 0
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    ctx.subagents.registerProvider({
+      name: 'always-fails',
+      capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+      inheritsParentContext: false,
+      start: async () => {
+        starts += 1
+        return {
+          id: SessionId(`fail-child-${starts}`),
+          localAgent: undefined,
+          result: Promise.resolve({ output: [{ type: 'text', text: 'partial' }], stopReason: 'max-tokens' as const }),
+          dispose: async () => {},
+        }
+      },
+    })
+    await ctx.plugin(tool, { provider: 'always-fails', maxDepth: 'provider-managed', retries: 2 })
+
+    const result = await callSubagent(ctx, { description: 'd', prompt: 'p' })
+    expect(starts).toBe(3)
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('Partial output before the run ended')
+    expect(text(result)).toContain('partial')
   })
 
   it('defaults toolName and omits agentOptions when apply() is called directly (schema bypass)', async () => {
@@ -770,6 +888,67 @@ describe('dsh-tool-subagent', () => {
     })
     const fiber = ctx.plugin(tool, { provider: 'p', toolFilter: {} })
     await expect(fiber).rejects.toThrow(/names neither `allow` nor `deny`/)
+  })
+})
+
+describe('ported from llm-use tests', () => {
+  it('re-runs a foreground run whose child stopped at `error` (retry is not max-tokens-only)', async () => {
+    let starts = 0
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    ctx.subagents.registerProvider({
+      name: 'error-retryable',
+      capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+      inheritsParentContext: false,
+      start: async () => {
+        starts += 1
+        return {
+          id: SessionId(`error-retry-child-${starts}`),
+          localAgent: undefined,
+          result: Promise.resolve(starts === 1
+            ? { output: [{ type: 'text', text: 'partial' }], stopReason: 'error' as const }
+            : { output: [{ type: 'text', text: 'recovered' }], stopReason: 'completed' as const }),
+          dispose: async () => {},
+        }
+      },
+    })
+    await ctx.plugin(tool, { provider: 'error-retryable', maxDepth: 'provider-managed', retries: 1 })
+
+    const result = await callSubagent(ctx, { description: 'd', prompt: 'p' })
+    expect(starts).toBe(2)
+    expect(result.isError).toBe(false)
+    expect(text(result)).toBe('recovered')
+  })
+
+  it('stops retrying an `error`-stopping child at the cap and surfaces the partial output', async () => {
+    let starts = 0
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SubagentRuntime)
+    ctx.subagents.registerProvider({
+      name: 'error-always-fails',
+      capabilities: { outputSchema: false, depthLimit: false, toolFilter: false, persona: false },
+      inheritsParentContext: false,
+      start: async () => {
+        starts += 1
+        return {
+          id: SessionId(`error-fail-child-${starts}`),
+          localAgent: undefined,
+          result: Promise.resolve({ output: [{ type: 'text', text: 'partial' }], stopReason: 'error' as const }),
+          dispose: async () => {},
+        }
+      },
+    })
+    await ctx.plugin(tool, { provider: 'error-always-fails', maxDepth: 'provider-managed', retries: 2 })
+
+    const result = await callSubagent(ctx, { description: 'd', prompt: 'p' })
+    expect(starts).toBe(3)
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('Partial output before the run ended')
+    expect(text(result)).toContain('partial')
   })
 })
 

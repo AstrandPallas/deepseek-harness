@@ -11,6 +11,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { AgentOptions } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-session'
@@ -76,6 +77,13 @@ export interface Config {
    * budget belongs to the child runtime or its own deployment.
    */
   maxDepth?: number | 'provider-managed'
+  /**
+   * Automatic re-runs of a failed foreground delegation whose stop reason is
+   * retryable (`error` or `max-tokens`). Defaults to 0. Background runs are
+   * never auto-retried: their result is collected later and the parent owns
+   * any re-delegation.
+   */
+  retries?: number
 }
 
 export const Config: z<Config> = z.object({
@@ -96,6 +104,7 @@ export const Config: z<Config> = z.object({
     deny: z.array(z.string()).default(undefined as unknown as string[]),
   }).default(undefined as unknown as { allow: string[]; deny: string[] }),
   maxDepth: z.union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const('provider-managed' as const)]).default(3),
+  retries: z.natural().default(0),
 })
 
 /** Render text blocks from the canonical JSON block array without trusting arbitrary values. */
@@ -167,42 +176,79 @@ type ForegroundToolResult = {
   readonly kind: 'foreground'
   readonly runId: SubagentRun['id']
   readonly output: JsonValue[]
+  /** The validated structured value when the run was requested with an outputSchema and the child captured one. */
+  readonly structured?: JsonValue
+}
+
+/** Stop reasons a fresh identical run can plausibly overcome. */
+const RETRYABLE_STOP_REASONS = new Set<string>(['error', 'max-tokens'])
+
+/**
+ * A stop-reason failure carrying its machine reason, so retry policy routes on
+ * the reason rather than parsing the human message.
+ */
+class StopReasonError extends Error {
+  readonly stopReason: SubagentResult['stopReason']
+
+  constructor(stopReason: SubagentResult['stopReason'], message: string) {
+    super(message)
+    this.name = 'StopReasonError'
+    this.stopReason = stopReason
+  }
 }
 
 /**
- * Collect and release one foreground run without letting disposal replace an
- * independent result failure.
+ * Collect and release one foreground run, re-running it up to `retries` times
+ * when it stops with a retryable reason. Each attempt disposes its run before
+ * the next starts, so a retry never doubles up on child resources.
  */
-async function settleForegroundRun(run: SubagentRun): Promise<ForegroundToolResult> {
-  const [execution] = await Promise.allSettled([
-    run.result.then((result): ForegroundToolResult => {
-      const error = stopReasonError(result)
-      if (error !== undefined) {
-        // The registry converts this throw to isError; partial output is not
-        // success, but the preserved partial answer still reaches the parent.
-        throw new Error(withDiagnosticAndPartialText(error, result))
+async function settleForegroundRun(
+  run: SubagentRun,
+  retries: number,
+  restart: () => Promise<SubagentRun>,
+): Promise<ForegroundToolResult> {
+  let current = run
+  for (let attempt = 0; ; attempt++) {
+    const [execution] = await Promise.allSettled([
+      current.result.then((result): ForegroundToolResult => {
+        const error = stopReasonError(result)
+        if (error !== undefined) {
+          // The registry converts this throw to isError; partial output is not
+          // success, but the preserved partial answer still reaches the parent.
+          throw new StopReasonError(result.stopReason, withDiagnosticAndPartialText(error, result))
+        }
+        return {
+          kind: 'foreground',
+          runId: current.id,
+          // Content blocks already cross durable JSON boundaries elsewhere;
+          // the registry performs the authoritative lossless snapshot here.
+          output: result.output as unknown as JsonValue[],
+          ...result.structured !== undefined ? { structured: result.structured as JsonValue } : {},
+        }
+      }),
+    ])
+    const [disposal] = await Promise.allSettled([Promise.resolve().then(() => current.dispose())])
+    if (execution.status === 'rejected') {
+      if (
+        attempt < retries
+        && disposal.status === 'fulfilled'
+        && execution.reason instanceof StopReasonError
+        && RETRYABLE_STOP_REASONS.has(execution.reason.stopReason)
+      ) {
+        current = await restart()
+        continue
       }
-      return {
-        kind: 'foreground',
-        runId: run.id,
-        // Content blocks already cross durable JSON boundaries elsewhere;
-        // the registry performs the authoritative lossless snapshot here.
-        output: result.output as unknown as JsonValue[],
+      if (disposal.status === 'rejected') {
+        throw new AggregateError(
+          [execution.reason, disposal.reason],
+          `subagent run failed: ${String(execution.reason)}; dispose failed: ${String(disposal.reason)}`,
+        )
       }
-    }),
-  ])
-  const [disposal] = await Promise.allSettled([Promise.resolve().then(() => run.dispose())])
-  if (execution.status === 'rejected') {
-    if (disposal.status === 'rejected') {
-      throw new AggregateError(
-        [execution.reason, disposal.reason],
-        `subagent run failed: ${String(execution.reason)}; dispose failed: ${String(disposal.reason)}`,
-      )
+      throw execution.reason
     }
-    throw execution.reason
+    if (disposal.status === 'rejected') throw disposal.reason
+    return execution.value
   }
-  if (disposal.status === 'rejected') throw disposal.reason
-  return execution.value
 }
 
 /**
@@ -283,6 +329,10 @@ export function apply(ctx: Context, config: Config): void {
   }
   const backgroundEnabled = config.enableRunInBackground !== false
   const continuable = (config.backgroundMode ?? 'one-shot') === 'continuable'
+  const retries = config.retries ?? 0
+  if (!Number.isInteger(retries) || retries < 0) {
+    throw new Error('tool-subagent: retries must be a non-negative integer')
+  }
   const toolName = config.toolName ?? 'subagent'
   // Mirror provider lifecycle because sibling load order and HMR replacement
   // can change provider availability while this fiber remains active.
@@ -298,6 +348,7 @@ export function apply(ctx: Context, config: Config): void {
       )
     }
     const wording = providerWording(provider.inheritsParentContext)
+    const outputSchemaCapable = provider.capabilities.outputSchema
     if (continuable && provider.prepareContinuable === undefined) {
       throw new Error(
         `tool-subagent: provider "${provider.name}" does not support \`backgroundMode: continuable\``,
@@ -332,6 +383,13 @@ export function apply(ctx: Context, config: Config): void {
               : 'Whether to run as a background job and return its id. Defaults to false; collect with job_output or stop with job_kill.',
           },
         } : {},
+        ...outputSchemaCapable ? {
+          output_schema: {
+            type: 'object' as const,
+            additionalProperties: true,
+            description: 'Optional object-rooted JSON Schema the child\'s final structured result must satisfy. When set, the child reports through a dedicated structured capture and this tool returns the validated object instead of free text. Leave unset for a normal text report.',
+          },
+        } : {},
       },
       output: {
         schema: {
@@ -359,6 +417,7 @@ export function apply(ctx: Context, config: Config): void {
                 kind: { type: 'string', required: true, const: 'foreground' },
                 runId: { type: 'string', required: true },
                 output: { type: 'array', required: true, items: { type: 'json' } },
+                structured: { type: 'json' },
               },
             },
           ],
@@ -369,7 +428,9 @@ export function apply(ctx: Context, config: Config): void {
             ? `started background subagent job ${value.jobId}`
             : value.kind === 'continuable'
               ? `started subagent ${value.subagentId}`
-              : outputValueText(value.output),
+              : value.structured !== undefined
+                ? JSON.stringify(value.structured)
+                : outputValueText(value.output),
         }],
       },
       // Children never mutate the parent session; the one parent-owned write
@@ -383,6 +444,11 @@ export function apply(ctx: Context, config: Config): void {
         }
 
         const maxDepth = typeof config.maxDepth === 'number' ? config.maxDepth : undefined
+        // The validator permits undeclared keys, so an incapable provider's
+        // schema omission still needs execution-time enforcement.
+        if (args.output_schema !== undefined && !outputSchemaCapable) {
+          throw new Error(`output_schema is not supported by subagent provider "${config.provider}" (no outputSchema capability)`)
+        }
         const request = {
           label: args.description,
           prompt: [{ type: 'text', text: args.prompt }] as ContentBlock[],
@@ -391,6 +457,11 @@ export function apply(ctx: Context, config: Config): void {
           ...config.persona !== undefined ? { persona: config.persona } : {},
           ...config.toolFilter !== undefined ? { toolFilter: config.toolFilter } : {},
           ...maxDepth !== undefined ? { maxDepth } : {},
+          // Model-tool JSON is the validated boundary: the subagent service's
+          // assertObjectJsonSchema enforces the object-rooted subset at start.
+          ...args.output_schema !== undefined
+            ? { outputSchema: args.output_schema as unknown as ObjectJsonSchema }
+            : {},
         }
 
         const runSpec = resolveDelegationRun(args, { backgroundEnabled, continuable })
@@ -435,7 +506,11 @@ export function apply(ctx: Context, config: Config): void {
           ...request,
           signal: exec.signal,
         })
-        return settleForegroundRun(run)
+        return settleForegroundRun(
+          run,
+          retries,
+          () => ctx.subagents.start(config.provider, { ...request, signal: exec.signal }),
+        )
       },
     }))
   }
