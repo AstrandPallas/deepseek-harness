@@ -176,6 +176,19 @@
       config:
         summarizationProvider: muse-glimmer
         summarizationModel: muse-glimmer
+        # 1M-window cloud sessions must not summarize through the 65K local
+        # model: the overflow-recovery replay (~790K tokens) does not fit, so
+        # recovery would fail and repeat the original error. Clearing both
+        # fields for these exact targets inherits the conversation's model.
+        modelPolicies:
+          - provider: deepseek-official
+            model: deepseek-v4-pro
+            summarizationProvider: ''
+            summarizationModel: ''
+          - provider: opencode-go
+            model: deepseek-v4-pro
+            summarizationProvider: ''
+            summarizationModel: ''
 
     - id: command-compact
       name: '@deepseek-ai/dsh-command-compact'
