@@ -98,6 +98,47 @@ describe('PiAiAdapter provider routing', () => {
     expect(server.requests).toHaveLength(2)
   })
 
+  it('shares one weighted pool across routes: a big request waits while new small ones slip past', async () => {
+    const server = await mockServer([
+      { events: textEvents, delayMs: 300 },
+      { events: textEvents, delayMs: 300 },
+      { events: textEvents },
+    ])
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    ctx.llm.registerAdapter(['lean', 'big'], adapterOf({
+      lean: {
+        api: 'openai-completions',
+        baseURL: server.url,
+        apiKeyEnv: 'PI_TEST_KEY',
+        models: [{ id: 'muse-lean', contextWindow: 32768, maxTokens: 512 }],
+        kvUnits: 2,
+        kvPool: 6,
+      },
+      big: {
+        api: 'openai-completions',
+        baseURL: server.url,
+        apiKeyEnv: 'PI_TEST_KEY',
+        models: [{ id: 'muse-big', contextWindow: 114688, maxTokens: 512 }],
+        kvUnits: 6,
+        kvPool: 6,
+      },
+    }))
+    const lean1 = assemble(ctx, { provider: 'lean', model: 'muse-lean', messages: [] })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const big = assemble(ctx, { provider: 'big', model: 'muse-big', messages: [] })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const lean2 = assemble(ctx, { provider: 'lean', model: 'muse-lean', messages: [] })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    // While lean1 runs, the big request waits for 6 units and the second lean
+    // takes the free 2: the server has seen exactly the two lean requests.
+    expect(server.requests).toHaveLength(2)
+    await Promise.all([lean1, big, lean2])
+    expect(server.requests).toHaveLength(3)
+    const arrivalOrder = server.requests.map(request => (request as { model?: string }).model)
+    expect(arrivalOrder).toEqual(['muse-lean', 'muse-lean', 'muse-big'])
+  })
+
   it('merges profile headers with Harness attribution winning', async () => {
     const server = await mockServer([{ events: textEvents }])
     const ctx = await harness(server.url, {

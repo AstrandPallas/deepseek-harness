@@ -192,6 +192,8 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
 export class PiAiAdapter extends LlmAdapter {
   private snapshot: PiAiSnapshot | undefined
   private readonly limiters = new Map<string, { cap: number; sem: Semaphore }>()
+  /** Shared weighted pools keyed by baseURL; replaced when the capacity changes. */
+  private readonly pools = new Map<string, { cap: number; sem: Semaphore }>()
 
   constructor(private readonly config: PiAiAdapterOptions) {
     super()
@@ -204,6 +206,21 @@ export class PiAiAdapter extends LlmAdapter {
     if (existing !== undefined && existing.cap === cap) return existing.sem
     const sem = new Semaphore(cap)
     this.limiters.set(provider, { cap, sem })
+    return sem
+  }
+
+  /**
+   * The shared weighted pool for one baseURL. Routes that declare `kvUnits`
+   * and the same baseURL reserve units from one pool, so a large request
+   * waits for smaller ones without blocking new smaller arrivals.
+   * @param baseURL - the explicit endpoint every weighted route declares.
+   * @param cap - the shared pool capacity.
+   */
+  private poolFor(baseURL: string, cap: number): Semaphore {
+    const existing = this.pools.get(baseURL)
+    if (existing !== undefined && existing.cap === cap) return existing.sem
+    const sem = new Semaphore(cap)
+    this.pools.set(baseURL, { cap, sem })
     return sem
   }
 
@@ -301,10 +318,17 @@ export class PiAiAdapter extends LlmAdapter {
     // the one it started with and the next call picks up the new one.
     const snapshot = this.current()
     const profile = this.profileOf(snapshot, options.provider)
-    // A route-level concurrency cap queues this stream before any network or
-    // credential work; the permit is held until the stream settles.
-    const limiter = this.limiterFor(profile.provider, profile.maxConcurrent)
-    const release = limiter === undefined ? undefined : await limiter.acquire(options.signal)
+    // A route-level concurrency cap, or a weighted shared-pool reservation,
+    // queues this stream before any network or credential work; the permit is
+    // held until the stream settles.
+    const limiter = profile.kvUnits === undefined
+      ? this.limiterFor(profile.provider, profile.maxConcurrent)
+      // Weighted routes declare an explicit baseURL and kvPool (validated at
+      // resolve time), so both are present here.
+      : this.poolFor(profile.baseURL ?? '', profile.kvPool ?? 1)
+    const release = limiter === undefined
+      ? undefined
+      : await limiter.acquireUnits(profile.kvUnits ?? 1, options.signal)
     const model = this.modelOf(snapshot, options.provider, options.model)
     const reasoning = resolveReasoningLevel(
       model,
@@ -318,7 +342,6 @@ export class PiAiAdapter extends LlmAdapter {
       : AbortSignal.any([options.signal, consumer.signal])
     const streamIdleTimeoutMs = profile.streamIdleTimeoutMs
     using watchdog = idleWatchdog(upstream, streamIdleTimeoutMs, 'LLM_STREAM_IDLE_TIMEOUT')
-
     try {
       const containsImage = options.messages.some(message => contentHasImage(message.content))
       if (containsImage && !model.input.includes('image')) {

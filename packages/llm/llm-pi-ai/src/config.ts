@@ -169,6 +169,18 @@ export interface PiAiProviderProfile {
    * server route to its slot count (e.g. llama.cpp `-np`).
    */
   maxConcurrent?: number
+  /**
+   * Weighted KV-pool budgeting for routes that share one local server. When
+   * set, this route's requests reserve `kvUnits` of a shared pool whose
+   * capacity is `kvPool`, keyed by baseURL across every route that declares
+   * one. A request queues when not enough units are free, and a large request
+   * waits for smaller ones to drain without blocking new smaller arrivals.
+   * Requires an explicit `baseURL` and `kvPool`; all three must be set
+   * together on every route that shares the pool.
+   */
+  kvUnits?: number
+  /** Shared pool capacity for weighted budgeting; set together with `kvUnits`. */
+  kvPool?: number
   /** Provider-owned model-request retry policy; omission uses normal mode with five retries. */
   retryPolicy?: RetryPolicyConfig
 }
@@ -319,6 +331,8 @@ const profile = z.object({
   streamIdleTimeoutMs: z.number().min(Number.MIN_VALUE).max(MAX_TIMER_DELAY_MS).default(DEFAULT_STREAM_IDLE_TIMEOUT_MS),
   maxRequestImageBytes: z.number().step(1).min(1).default(DEFAULT_MAX_REQUEST_IMAGE_BYTES),
   maxConcurrent: z.number().step(1).min(1),
+  kvUnits: z.number().step(1).min(1),
+  kvPool: z.number().step(1).min(1),
   retryPolicy: RetryPolicySchema,
 })
 
@@ -385,6 +399,15 @@ export function resolveProfiles(
     }
     if (source.displayName !== undefined && source.displayName.length === 0) {
       throw new Error(`llm-pi-ai: provider "${provider}" has an empty displayName`)
+    }
+    if ((source.kvUnits === undefined) !== (source.kvPool === undefined)) {
+      throw new Error(`llm-pi-ai: provider "${provider}" kvUnits and kvPool must be set together`)
+    }
+    if (source.kvUnits !== undefined && source.baseURL === undefined) {
+      throw new Error(`llm-pi-ai: provider "${provider}" weighted KV budgeting requires an explicit baseURL`)
+    }
+    if (source.kvUnits !== undefined && source.kvPool !== undefined && source.kvUnits > source.kvPool) {
+      throw new Error(`llm-pi-ai: provider "${provider}" kvUnits must not exceed kvPool`)
     }
     const streamIdleTimeoutMs = source.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS
     if (!Number.isFinite(streamIdleTimeoutMs)

@@ -35,12 +35,14 @@
         or two files inline in a turn. Even when doing it yourself would also work, delegate
         anyway: local workers are free and keep your context clear.
       - Worker classes, pick per task:
-        `subagent` (local Muse Glimmer 30B, one at a time, full 128K window): deep-context work.
-        Large reads, long files, multi-file tracing, anything that needs the whole window. Queue
-        these: start the next only after the previous settles.
-        `subagent_cloud` (cloud deepseek-v4-pro, parallel): fan-out of many small independent
-        checks. Launch several at once with run_in_background, each with a tiny self-contained
-        brief, and fold their short reports yourself.
+        `subagent_lean` (local 32K): small independent checks. Run up to three at once.
+        `subagent_mid` (local 64K): moderate reads. At most one, or one beside a lean worker.
+        `subagent` (local 112K, deep): large reads, long files, multi-file tracing. This class
+        waits for lean and mid workers to drain before it starts, and nothing else starts while
+        it runs. Queue these one after another.
+        `subagent_cloud` (cloud deepseek-v4-pro, parallel): fan-out of many tiny checks that
+        share no local window; launch several at once with run_in_background and fold their
+        short reports yourself.
       - Batch related reads into one worker prompt (for example "read these five files and
         explain how X is wired"). Use `run_in_background: false` when your next step needs the
         answer; otherwise launch independent workers in parallel.
@@ -178,7 +180,7 @@
     - id: compaction-basic
       name: '@deepseek-ai/dsh-compaction-basic'
       config:
-        summarizationProvider: muse-glimmer
+        summarizationProvider: muse-lean
         summarizationModel: muse-glimmer
         # 1M-window cloud sessions must not summarize through the 65K local
         # model: the overflow-recovery replay (~790K tokens) does not fit, so
@@ -257,9 +259,45 @@
           verify. Keep the whole report under 400 words unless the task explicitly requires
           code or file output.
         agentOptions:
-          provider: muse-glimmer
+          provider: muse-big
           model: muse-glimmer
           maxTokens: 8192
+
+    - id: tool-subagent-mid
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent_mid
+        backgroundMode: continuable
+        maxDepth: 1
+        retries: 1
+        persona: >-
+          You are the mid-band local worker, running the local Muse Glimmer 30B with a 64K
+          window, at most one of you beside a lean worker. Complete the assigned task yourself
+          with the tools you have; read what your brief names and nothing more. You cannot
+          delegate: subagent tools are reserved for the orchestrator and will be rejected.
+          End with a bounded findings block: one bullet per finding with file:line where
+          possible, a confidence line (high/medium/low), and anything you could not verify.
+          Keep the report under 300 words unless the task requires code or file output.
+        agentOptions:
+          provider: muse-mid
+          model: muse-glimmer
+          maxTokens: 8192
+
+    - id: tool-subagent-lean
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent_lean
+        backgroundMode: continuable
+        maxDepth: 1
+        retries: 1
+        persona: >-
+          You are the lean local worker, running the local Muse Glimmer 30B with a 32K window,
+          up to three of you at once. Stay inside your small brief: read only what it names,
+          answer only what it asks. You cannot delegate: subagent tools are reserved for the
+          orchestrator and will be rejected. Return a short bounded report: bullets with
+          file:line where possible, under 200 words.
 
     - id: tool-subagent-cloud
       name: '@deepseek-ai/dsh-tool-subagent'
