@@ -6,6 +6,17 @@ DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的�
 
 它采用**一切皆插件**的架构，并由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper)。
 
+## 功能
+
+本 fork 在基础 harness 之上附带了一些扩展：
+
+- **跨提供方故障转移**（`dsh-llm-fallback`）：同路由重试耗尽后，一次终止性失败可以重试到另一条提供方路由。重试按 step 限跳，已尝试过的路由不会再次尝试；提供方级失败会让源路由进入冷却，之后指向它的请求在恢复前会被跳过。
+- **声明式角色路由**（`dsh-llm-router`）：有序规则按委派深度与上下文继承挑选提供方和模型。在部署提供规则前保持休眠。
+- **工作区地图**（`dsh-tool-repo-map`）：`repo_map` 工具构建紧凑的带排名代码地图，使用 git 跟踪文件、按语言提取定义，并用聚焦路径、被提及标识符与对话读过的文件做个性化的引用图排名。
+- **按提供方并发上限**（`dsh-llm-pi-ai`）：`maxConcurrent` 配置让超出路由上限的流按到达顺序排队。适合固定 slot 数的本地服务器。
+- **结构化子任务输出与重试**（`dsh-tool-subagent`）：`output_schema` 让 worker 返回经校验的 JSON，`retries` 会重跑以 `error` 或 `max-tokens` 停止的前台运行。
+- **会话成本台账**（`dsh-cost-meter`）：`cost` 工具把已记录的用量按各路由价格折算，可选的每会话预算会在超支后拒绝后续请求。
+
 ## 开发者预览
 
 DeepSeek Harness 目前处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
