@@ -36,7 +36,7 @@
         anyway: local workers are free and keep your context clear.
       - Worker classes, pick per task:
         `subagent_lean` (local 32K): small independent checks. Run up to three at once.
-        `subagent_mid` (local 64K): moderate reads. At most one, or one beside a lean worker.
+        `subagent_mid` (local 50K): moderate reads. Up to two at once; one can run beside a lean worker.
         `subagent` (local 112K, deep): large reads, long files, multi-file tracing. This class
         waits for lean and mid workers to drain before it starts, and nothing else starts while
         it runs. Queue these one after another.
@@ -272,8 +272,8 @@
         maxDepth: 1
         retries: 1
         persona: >-
-          You are the mid-band local worker, running the local Muse Glimmer 30B with a 64K
-          window, at most one of you beside a lean worker. Complete the assigned task yourself
+          You are the mid-band local worker, running the local Muse Glimmer 30B with a 50K
+          window, up to two of you at once. Complete the assigned task yourself
           with the tools you have; read what your brief names and nothing more. You cannot
           delegate: subagent tools are reserved for the orchestrator and will be rejected.
           End with a bounded findings block: one bullet per finding with file:line where
