@@ -64,6 +64,7 @@
     "@deepseek-ai/dsh-llm-deepseek": "workspace:^",
     "@deepseek-ai/dsh-llm-fallback": "workspace:^",
     "@deepseek-ai/dsh-cost-meter": "workspace:^",
+    "@deepseek-ai/dsh-goal-governor": "workspace:^",
     "@deepseek-ai/dsh-llm-pi-ai": "workspace:^",
     "@deepseek-ai/dsh-llm-retry": "workspace:^",
     "@deepseek-ai/dsh-llm-router": "workspace:^",

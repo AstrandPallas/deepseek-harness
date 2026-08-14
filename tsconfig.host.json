@@ -198,6 +198,7 @@
     { "path": "./packages/llm/llm-fallback" },
     { "path": "./packages/llm/llm-router" },
     { "path": "./packages/llm/cost-meter" },
+    { "path": "./packages/goal/goal-governor" },
     { "path": "./packages/examples/agent-spine-demo" },
     { "path": "./packages/subprocess/subprocess" },
     { "path": "./packages/subprocess/subprocess-local" },

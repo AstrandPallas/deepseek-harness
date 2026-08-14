@@ -88,6 +88,11 @@
     - id: cost-meter
       name: '@deepseek-ai/dsh-cost-meter'
 
+    # Goal governor: pauses a goal's rounds while child agents work, but only
+    # after the loop proves it is spinning idle (see the package README).
+    - id: goal-governor
+      name: '@deepseek-ai/dsh-goal-governor'
+
     # User-settings document (`$DSH_HOME/settings.yaml`, hot-reloaded): a
     # `llm-deepseek:` or `llm-pi-ai:` section there overrides the adapter entries
     # below without a restart, and is what the web Models page writes.
