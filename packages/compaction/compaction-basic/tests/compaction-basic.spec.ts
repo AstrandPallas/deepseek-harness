@@ -31,7 +31,10 @@ const SIGNAL = new AbortController().signal
 const MODEL = 'test-model'
 
 class ContextAdapter extends LlmAdapter {
-  constructor(private readonly contextWindow: number) {
+  constructor(
+    private readonly contextWindow: number,
+    private readonly defaultMaxTokens?: number,
+  ) {
     super()
   }
 
@@ -41,6 +44,7 @@ class ContextAdapter extends LlmAdapter {
       id: model,
       name: model,
       context: { contextWindow: this.contextWindow },
+      ...this.defaultMaxTokens === undefined ? {} : { defaultMaxTokens: this.defaultMaxTokens },
     })
   }
 
@@ -634,6 +638,41 @@ describe('pressure measurement and retention', () => {
     })
     const result = await compactIfNeeded(compact, session)
     expect(result).not.toBeNull()
+  })
+
+  it('counts the reserved completion from the durable request header against the threshold', async () => {
+    const ctx = createContext()
+    const compact = service({ auto: false, thresholdRatio: 0.5, retainTokens: 50 }, ctx)
+    const session = conversation(4, 'x'.repeat(200))
+    const prompt = ctx.tokenMeter.measure(session).totalTokens
+    expect(prompt).toBeLessThan(500)
+    expect(await compactIfNeeded(compact, session)).toBeNull()
+    expect(compact.calls).toHaveLength(0)
+
+    session.append('request/header', {
+      header: { config: { provider: MODEL, model: MODEL, maxTokens: 500 - prompt + 1 } },
+      reason: 'change',
+    })
+    // Prompt plus the reserved completion crosses the threshold, so compaction
+    // engages and one checkpoint lands the reduced envelope back below it.
+    const result = await compactIfNeeded(compact, session)
+    expect(result).not.toBeNull()
+    expect(compact.calls).toHaveLength(1)
+  })
+
+  it('falls back to the adapter default reservation when no request records one', async () => {
+    const ctx = new Context()
+    void new LlmRuntime(ctx)
+    void new TokenMeter(ctx)
+    ctx.llm.registerAdapter([MODEL], new ContextAdapter(1_000, 30))
+    const compact = service({ auto: false, thresholdRatio: 0.5, retainTokens: 50 }, ctx)
+    const session = conversation(4, 'x'.repeat(200))
+    const prompt = ctx.tokenMeter.measure(session).totalTokens
+    expect(prompt).toBeLessThan(500)
+    expect(prompt + 30).toBeGreaterThan(500)
+    const result = await compactIfNeeded(compact, session)
+    expect(result).not.toBeNull()
+    expect(compact.calls).toHaveLength(1)
   })
 
   it('uses the latest logged request envelope without an AgentOptions override', async () => {

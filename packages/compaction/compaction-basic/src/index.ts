@@ -290,7 +290,8 @@ export class BasicCompactionEngine extends CompactionEngine {
       return this.compactRegion(range.start, range.end, agent, signal)
     }
 
-    const context = (await this.ctx.llm.resolveModelInfo(target.provider, target.model, signal)).context
+    const info = await this.ctx.llm.resolveModelInfo(target.provider, target.model, signal)
+    const context = info.context
     assertNoActiveCompaction(agent.session, 'automatic pressure compaction')
     const targetKey = `${target.provider}/${target.model}`
     if (context === undefined) {
@@ -300,8 +301,14 @@ export class BasicCompactionEngine extends CompactionEngine {
         + 'configure contextWindow on that adapter model',
       )
     }
+    // The provider rejects a request once prompt plus the reserved completion
+    // exceeds the window, so the reservation shrinks the prompt headroom the
+    // threshold protects. The session's folded request header records the
+    // effective per-request cap (adapter defaults materialized); before the
+    // first routed request, fall back to the adapter's own default.
+    const reservation = agent.session.requestHeader()?.config.maxTokens ?? info.defaultMaxTokens ?? 0
     const spec = resolveCompactSpec(policy, context.contextWindow)
-    if (measurement.totalTokens < spec.thresholdTokens) return null
+    if (measurement.totalTokens + reservation < spec.thresholdTokens) return null
 
     // Once pressure qualifies, land the model-free pass before choosing a
     // summary range, then remeasure through the singleton replay fold.
@@ -309,7 +316,7 @@ export class BasicCompactionEngine extends CompactionEngine {
       prune.pruneSession(agent.session)
       measurement = meter.measure(agent.session)
     }
-    if (measurement.totalTokens < spec.thresholdTokens) return null
+    if (measurement.totalTokens + reservation < spec.thresholdTokens) return null
 
     let result: CompactionResult | null = null
     for (let attempt = 0; attempt <= spec.compactionRetries; attempt += 1) {
@@ -322,12 +329,12 @@ export class BasicCompactionEngine extends CompactionEngine {
       }
       result = await this.compactRegion(range.start, range.end, agent, signal)
       measurement = meter.measure(agent.session)
-      if (measurement.totalTokens < spec.thresholdTokens) return result
+      if (measurement.totalTokens + reservation < spec.thresholdTokens) return result
     }
 
     throw new Error(
       `compaction still above threshold after ${spec.compactionRetries + 1} compaction attempts `
-      + `(${measurement.totalTokens} estimated tokens >= threshold ${spec.thresholdTokens})`,
+      + `(${measurement.totalTokens + reservation} prompt-plus-reservation tokens >= threshold ${spec.thresholdTokens})`,
     )
   }
 

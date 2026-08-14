@@ -10,7 +10,7 @@
 
 该后端拥有压缩策略：
 
-- **测量**：单例 `ctx.tokenMeter` 会在同一个已消费日志 revision 上，计量最新一份规范化已记录 envelope 与当前表层的 token 用量。因此，步骤边界的压力计量会包含实际系统提示词、工具、路由、assistant 完成、工具结果、缓冲上下文与 steering（中途引导）。
+- **测量**：单例 `ctx.tokenMeter` 会在同一个已消费日志 revision 上，计量最新一份规范化已记录 envelope 与当前表层的 token 用量。因此，步骤边界的压力计量会包含实际系统提示词、工具、路由、assistant 完成、工具结果、缓冲上下文与 steering（中途引导）。阈值比较会加上保留的完成额度——持久请求头中的有效 `maxTokens`，或首次路由请求前所属适配器的默认值——因为提供方会拒绝提示词加 `max_tokens` 超出窗口的请求。
 - **路由策略**：主动压力从拥有最新持久提供方／模型路由的适配器解析容量，再将默认策略与可选的精确目标覆盖缩放为具体 token 预算。模型发现仍仅供参考，不参与此处的策略解析。
 - **不依赖模型的剪枝**：在压力或规范溢出符合条件后，可选的 [`ctx.toolResultPruner`](../compaction-tool-result-pruner/README.md) 服务会在选择范围之前改写超大工具结果。Compact-basic 通过 `ctx.tokenMeter` 重新测量；如果压力已回到安全范围，就跳过摘要，否则对已剪枝的表层进行摘要。低于压力的步骤检查绝不剪枝。
 - **保留**：压缩最旧的完整表层单元，同时保留近期尾部，并通过 [`dsh-compaction` 边界 helper](../compaction/README.md#tool-pairing-boundaries) 将切分点调整到工具调用／结果配对平衡的位置。轮次边界不会保护失控轮次内的旧步骤。尚未闭合且不可分的尾部会在闭合前拒绝压缩。当闭合的超大工具单元以文本型结果为可移除主体时，可选 pruner 可以修复它；不可分的非工具单元与不可剪枝的工具剩余部分不在范围内。
@@ -29,7 +29,7 @@
 
 | Key | 必填 | 含义 |
 |---|---|---|
-| `thresholdRatio` | 否（默认 `0.8`） | 在 `floor(routedContextWindow × ratio)` 处压缩。 |
+| `thresholdRatio` | 否（默认 `0.8`） | 当提示词加保留的完成额度达到 `floor(routedContextWindow × ratio)` 时压缩。 |
 | `retainRatio` | 否（默认 `0.16`） | 以已路由上下文窗口的一部分表示逐字保留的近期表层预算；与 `retainTokens` 互斥。 |
 | `retainTokens` | 否 | 逐字保留的近期表层绝对预算；与 `retainRatio` 互斥，并且必须低于已解析阈值。 |
 | `summarizationProvider` | 否（默认 `''`） | 与 `summarizationModel` 一起设置；空对会解析为最新已记录请求目标，再回退到 `AgentOptions` 对。 |
