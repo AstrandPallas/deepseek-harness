@@ -476,6 +476,17 @@ Source: [`packages/hooks/hook-protocol/src/types.ts:31`](../packages/hooks/hook-
 
 ### `llm/*`
 
+<a id="llmfallback--log-only"></a>
+
+#### `llm/fallback` — log-only
+
+```ts persistence-catalog
+/** Durable, non-surface record of one cross-provider failover scheduled after a terminal request failure. */
+'llm/fallback': LlmFallbackEventData
+```
+
+Source: [`packages/llm/llm-fallback/src/types.ts:6`](../packages/llm/llm-fallback/src/types.ts)
+
 <a id="llmretry--log-only"></a>
 
 #### `llm/retry` — log-only

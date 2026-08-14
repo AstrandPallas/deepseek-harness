@@ -478,6 +478,17 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 ### `llm/*`
 
+<a id="llmfallback--log-only"></a>
+
+#### `llm/fallback` — log-only
+
+```ts persistence-catalog
+/** Durable, non-surface record of one cross-provider failover scheduled after a terminal request failure. */
+'llm/fallback': LlmFallbackEventData
+```
+
+来源：[`packages/llm/llm-fallback/src/types.ts:6`](../packages/llm/llm-fallback/src/types.ts)
+
 <a id="llmretry--log-only"></a>
 
 #### `llm/retry` — log-only

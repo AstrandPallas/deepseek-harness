@@ -704,6 +704,24 @@ export interface Config {
 
 Source: [`packages/goal/goal/src/index.ts:116`](../packages/goal/goal/src/index.ts)
 
+<a id="deepseek-aidsh-goal-governor"></a>
+
+## `@deepseek-ai/dsh-goal-governor`
+
+Requires: `goals` · `sessions` · `agents`
+
+```ts config-catalog
+/** Plugin configuration: the two streak thresholds. */
+export interface Config {
+  /** Consecutive tool-free rounds before governed mode engages (default 3). */
+  idleRoundThreshold?: number
+  /** Consecutive rounds with tool activity that end governed mode (default 2). */
+  productiveRoundThreshold?: number
+}
+```
+
+Source: [`packages/goal/goal-governor/src/index.ts:29`](../packages/goal/goal-governor/src/index.ts)
+
 <a id="deepseek-aidsh-headless"></a>
 
 ## `@deepseek-ai/dsh-headless`

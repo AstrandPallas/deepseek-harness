@@ -228,8 +228,12 @@ type PreStepDecision =
 `agent/request-error` runs after a failed model step closes and before its turn closes. Listeners can repair durable state or await policy work while the failed turn's signal is still live. A handling listener returns `{ kind: 'retry' }` without calling `next()`; the default `undefined` leaves the failure terminal.
 
 ```ts type-equiv
-/** Action returned by a listener that owns model-request recovery. */
-type RequestErrorAction = { kind: 'retry' } | undefined
+/**
+ * Action returned by a listener that owns model-request recovery. A `retry`
+ * with no route re-dispatches the failed request on its own route; `provider`
+ * and `model` set together retry on that alternate route for the one attempt.
+ */
+type RequestErrorAction = { kind: 'retry'; provider?: string; model?: string } | undefined
 ```
 
 `agent/pre-step` is the only serial listener chain before request derivation. `agent/turn-stopping` runs when a turn has no tool or steering continuation, before one final steering drain.
