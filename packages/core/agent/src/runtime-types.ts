@@ -54,8 +54,12 @@ export type PreStepDecision =
   | { kind: 'reject' }
   | { kind: 'enter'; messages: UserMessage[] }
 
-/** Action returned by a listener that owns model-request recovery. */
-export type RequestErrorAction = { kind: 'retry' } | undefined
+/**
+ * Action returned by a listener that owns model-request recovery. A `retry`
+ * with no route re-dispatches the failed request on its own route; `provider`
+ * and `model` set together retry on that alternate route for the one attempt.
+ */
+export type RequestErrorAction = { kind: 'retry'; provider?: string; model?: string } | undefined
 
 /** Why a session lifecycle began; seeded creates are `startup`, while persisted loads are `resume`. */
 export type SessionStartSource = 'startup' | 'resume' | 'clear' | 'compact'

@@ -336,10 +336,12 @@ export class ReactLoopAgent implements Agent {
     signal.throwIfAborted()
     const system = renderPrompt(assembly)
 
+    let failover: Readonly<{ provider: string; model: string }> | undefined
     while (true) {
       const { request, preparedCall } = await this.buildRequest(
-        turn, step, assembly.tools, system, this.session.deriveMessages(), signal,
+        turn, step, assembly.tools, system, this.session.deriveMessages(), signal, failover,
       )
+      failover = undefined
       const assembler = new BlockAssembler()
       const chunkSeqs: number[] = []
       try {
@@ -386,6 +388,9 @@ export class ReactLoopAgent implements Agent {
         if (action?.kind !== 'retry') {
           throw new LlmError(finish.failure.message, finish.failure.code, finish.failure)
         }
+        failover = action.provider !== undefined && action.model !== undefined
+          ? { provider: action.provider, model: action.model }
+          : undefined
         continue
       }
 
@@ -430,6 +435,7 @@ export class ReactLoopAgent implements Agent {
     system: string,
     boundaryMessages: Message[],
     signal: AbortSignal,
+    failover?: Readonly<{ provider: string; model: string }>,
   ): Promise<{ request: GenerateOptions; preparedCall?: PreparedLlmCall }> {
     const { session } = this
 
@@ -437,7 +443,7 @@ export class ReactLoopAgent implements Agent {
     // effort owned by that exact model. Later steps re-resolve marked defaults.
     const persistedHeader = session.requestHeader()
     const persistedConfig = persistedHeader?.config
-    const route = { provider: this.options.provider ?? '', model: this.options.model ?? '' }
+    const route = failover ?? { provider: this.options.provider ?? '', model: this.options.model ?? '' }
     const reasoningEffort = persistedConfig?.provider === route.provider
       && persistedConfig.model === route.model
       && persistedHeader?.adapterDefaults?.reasoningEffort !== true
@@ -445,7 +451,7 @@ export class ReactLoopAgent implements Agent {
       : undefined
     const maxTokens = this.options.maxTokens
     const seedConfig = deepFreeze(structuredClone(
-      this.requestHeaderLogged
+      failover === undefined && this.requestHeaderLogged
         // oxlint-disable-next-line typescript/no-non-null-assertion -- the instance logged the header it now folds
         ? requestProposal(persistedHeader!)
         : {

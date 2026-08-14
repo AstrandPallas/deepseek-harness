@@ -70,6 +70,13 @@ const EXCEEDS_MODEL_CONTEXT = new RegExp(
   'i',
 )
 
+/** llama.cpp's wording for a shared KV-cache pool exhausted mid-request. */
+const CONTEXT_SIZE_EXCEEDED = new RegExp(
+  String.raw`(?:^|[^a-z0-9])context[\s_-]size[\s_-](?:has[\s_-]been[\s_-])?`
+  + String.raw`exceed(?:ed|s)?(?:$|[^a-z0-9])`,
+  'i',
+)
+
 /**
  * Recognize the context-overflow wording used by OpenAI-compatible providers
  * and library adapters. Adapters pass all available provider code, type, and
@@ -79,6 +86,7 @@ const EXCEEDS_MODEL_CONTEXT = new RegExp(
  */
 export function isContextWindowExceededError(detail: string): boolean {
   return STRUCTURED_CONTEXT_OVERFLOW.test(detail)
+    || CONTEXT_SIZE_EXCEEDED.test(detail)
     || /\b(?:maximum|max)(?:\s+(?:allowed|supported))?\s+context\s+(?:length|window)\b/i.test(detail)
     || TOO_LARGE_FOR_CONTEXT.test(detail)
     || /\b(?:input|prompt|request)\s+(?:is\s+)?too\s+(?:long|large)\s+for\s+(?:this|the)\s+model\b/i.test(detail)

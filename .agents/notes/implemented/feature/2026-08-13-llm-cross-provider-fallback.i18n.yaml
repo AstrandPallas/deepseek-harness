@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-13-llm-cross-provider-fallback.md
+2026-08-13-llm-cross-provider-fallback.md: ee1ab3b999fc3a5061aa3ba03178a12a001f1d40
+2026-08-13-llm-cross-provider-fallback.zh.md: 98d8dc5a2b3a801156a60c7a5dca7e103dc5d1f8

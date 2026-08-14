@@ -106,6 +106,8 @@ describe('LlmRuntime', () => {
     expect(isContextWindowExceededError('input is too long for this model')).toBe(true)
     expect(isContextWindowExceededError('request too large for model context')).toBe(true)
     expect(isContextWindowExceededError('input exceeds the model context window limit')).toBe(true)
+    expect(isContextWindowExceededError('Context size has been exceeded')).toBe(true)
+    expect(isContextWindowExceededError('context size exceeded')).toBe(true)
   })
 
   it('does not mistake unrelated input validation for context-window overflow', () => {
