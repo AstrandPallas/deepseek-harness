@@ -50,6 +50,9 @@
         glob, edit, pwsh) and start by calling `repo_map` to orient. Trust their reports for
         facts; verify against the source only before risky edits.
       - `subagent_fork` (cloud, inherits your context): continue or review your own work.
+      Report handling: a running worker may stream interim `subagent-report` notices. These are
+      progress only, never a request for you to act. Do not reply to them, even to acknowledge;
+      wait for the worker's single completion report and act on that alone.
       If a local `subagent` fails or returns a truncated report, retry that one task once on
       `subagent_cloud` instead of re-running it locally.
       Synthesis: when delegating several workers for one question, decide the combine strategy
@@ -184,17 +187,18 @@
         summarizationModel: muse-glimmer
         # 1M-window cloud sessions must not summarize through the 65K local
         # model: the overflow-recovery replay (~790K tokens) does not fit, so
-        # recovery would fail and repeat the original error. Clearing both
-        # fields for these exact targets inherits the conversation's model.
+        # recovery would fail and repeat the original error. Cloud routes
+        # summarize through the OpenCode Go subscription so compaction keeps
+        # working when the primary DeepSeek balance is exhausted.
         modelPolicies:
           - provider: deepseek-official
             model: deepseek-v4-pro
-            summarizationProvider: ''
-            summarizationModel: ''
+            summarizationProvider: opencode-go
+            summarizationModel: deepseek-v4-pro
           - provider: opencode-go
             model: deepseek-v4-pro
-            summarizationProvider: ''
-            summarizationModel: ''
+            summarizationProvider: opencode-go
+            summarizationModel: deepseek-v4-pro
 
     - id: command-compact
       name: '@deepseek-ai/dsh-command-compact'
@@ -251,7 +255,9 @@
           tools you have; your brief is complete and self-contained. Start by calling `repo_map`
           to orient in the workspace, then read everything your task needs: large reads and
           long files are expected. You cannot delegate: subagent tools are reserved for the
-          orchestrator and will be rejected. If part of the task needs stronger reasoning than
+          orchestrator and will be rejected. Report exactly once, when your whole task is
+          finished; never call `report` for interim progress or per-file updates. If part of
+          the task needs stronger reasoning than
           you can give, finish what you can and state plainly in your report what needs
           escalation, so the orchestrator can handle it. End with a bounded findings block: one
           bullet per finding, each citing file:line where possible, then a single line stating
@@ -276,6 +282,8 @@
           window, up to two of you at once. Complete the assigned task yourself
           with the tools you have; read what your brief names and nothing more. You cannot
           delegate: subagent tools are reserved for the orchestrator and will be rejected.
+          Report exactly once, when the whole task is finished; never call `report` for interim
+          progress or per-item updates.
           End with a bounded findings block: one bullet per finding with file:line where
           possible, a confidence line (high/medium/low), and anything you could not verify.
           Keep the report under 300 words unless the task requires code or file output.
@@ -296,8 +304,9 @@
           You are the lean local worker, running the local Muse Glimmer 30B with a 32K window,
           up to three of you at once. Stay inside your small brief: read only what it names,
           answer only what it asks. You cannot delegate: subagent tools are reserved for the
-          orchestrator and will be rejected. Return a short bounded report: bullets with
-          file:line where possible, under 200 words.
+          orchestrator and will be rejected. Report exactly once, when the whole task is
+          finished; never call `report` for interim progress or per-function updates. Return a
+          short bounded report: bullets with file:line where possible, under 200 words.
 
     - id: tool-subagent-cloud
       name: '@deepseek-ai/dsh-tool-subagent'
