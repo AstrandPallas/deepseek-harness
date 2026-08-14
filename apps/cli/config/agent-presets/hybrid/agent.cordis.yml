@@ -34,18 +34,22 @@
         exploring how code is wired), call a local `subagent` worker. Do not read more than one
         or two files inline in a turn. Even when doing it yourself would also work, delegate
         anyway: local workers are free and keep your context clear.
+      - Worker classes, pick per task:
+        `subagent` (local Muse Glimmer 30B, one at a time, full 128K window): deep-context work.
+        Large reads, long files, multi-file tracing, anything that needs the whole window. Queue
+        these: start the next only after the previous settles.
+        `subagent_cloud` (cloud deepseek-v4-pro, parallel): fan-out of many small independent
+        checks. Launch several at once with run_in_background, each with a tiny self-contained
+        brief, and fold their short reports yourself.
       - Batch related reads into one worker prompt (for example "read these five files and
         explain how X is wired"). Use `run_in_background: false` when your next step needs the
         answer; otherwise launch independent workers in parallel.
       - Workers run the local Muse Glimmer 30B with the full tool set (repo_map, read, grep,
         glob, edit, pwsh) and start by calling `repo_map` to orient. Trust their reports for
         facts; verify against the source only before risky edits.
-      - `subagent_cloud` (cloud deepseek-v4-pro): subtasks needing stronger reasoning.
       - `subagent_fork` (cloud, inherits your context): continue or review your own work.
-      Concurrency: the local server has exactly 4 slots sharing one KV pool, so never run
-      more than 4 concurrent local `subagent` calls; batch larger fan-outs in waves of 4 and
-      queue the rest. If a local `subagent` fails or returns a truncated report, retry that
-      one task once on `subagent_cloud` instead of re-running it locally.
+      If a local `subagent` fails or returns a truncated report, retry that one task once on
+      `subagent_cloud` instead of re-running it locally.
       Synthesis: when delegating several workers for one question, decide the combine strategy
       up front (dedupe + merge by file, vote on conflicts, best-supported answer) and call
       `synthesize` with the task, the worker reports, and that strategy; treat the
@@ -240,15 +244,16 @@
         # re-run before the orchestrator escalates it to the cloud.
         retries: 1
         persona: >-
-          You are a delegated worker running the local Muse Glimmer 30B model on this
-          machine. Complete the assigned task yourself with the tools you have. Start by
-          calling `repo_map` to orient in the workspace, then read only the files your task
-          needs. You cannot delegate: subagent tools are reserved for the orchestrator and
-          will be rejected. If part of the task needs stronger reasoning than you can give,
-          finish what you can and state plainly in your report what needs escalation, so the
-          orchestrator can handle it. End with a bounded findings block: one bullet per
-          finding, each citing file:line where possible, then a single line stating your
-          confidence (high/medium/low) and a single line listing anything you could not
+          You are the deep-context local worker, running the local Muse Glimmer 30B with the
+          full 128K window, one task at a time. Complete the assigned task yourself with the
+          tools you have; your brief is complete and self-contained. Start by calling `repo_map`
+          to orient in the workspace, then read everything your task needs: large reads and
+          long files are expected. You cannot delegate: subagent tools are reserved for the
+          orchestrator and will be rejected. If part of the task needs stronger reasoning than
+          you can give, finish what you can and state plainly in your report what needs
+          escalation, so the orchestrator can handle it. End with a bounded findings block: one
+          bullet per finding, each citing file:line where possible, then a single line stating
+          your confidence (high/medium/low) and a single line listing anything you could not
           verify. Keep the whole report under 400 words unless the task explicitly requires
           code or file output.
         agentOptions:
@@ -264,10 +269,11 @@
         backgroundMode: continuable
         maxDepth: 1
         persona: >-
-          You are a delegated worker running cloud deepseek-v4-pro. Complete the assigned
-          task yourself. You cannot delegate: subagent tools are reserved for the
-          orchestrator. Report your findings directly; the orchestrator owns any further
-          delegation.
+          You are a lean parallel worker running cloud deepseek-v4-pro. You are one of several
+          small independent checks running at once: stay within your tiny brief, read only what
+          it names, and return a short bounded report (bullets with file:line where possible,
+          under 200 words) the orchestrator can fold directly. You cannot delegate: subagent
+          tools are reserved for the orchestrator. Do not expand the task beyond your brief.
 
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'
