@@ -73,6 +73,31 @@ describe('PiAiAdapter provider routing', () => {
     expect(server.paths).toEqual(['/chat/completions'])
   })
 
+  it('queues concurrent streams beyond the provider maxConcurrent cap', async () => {
+    const server = await mockServer([
+      { events: textEvents, delayMs: 200 },
+      { events: textEvents },
+    ])
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    ctx.llm.registerAdapter(['local'], adapterOf({
+      local: {
+        api: 'openai-completions',
+        baseURL: server.url,
+        apiKeyEnv: 'PI_TEST_KEY',
+        models: [{ id: 'local-model', contextWindow: 8192, maxTokens: 512 }],
+        maxConcurrent: 1,
+      },
+    }))
+    const first = assemble(ctx, { provider: 'local', model: 'local-model', messages: [] })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const second = assemble(ctx, { provider: 'local', model: 'local-model', messages: [] })
+    // The second request holds no slot, so it must not reach the server yet.
+    expect(server.requests).toHaveLength(1)
+    await Promise.all([first, second])
+    expect(server.requests).toHaveLength(2)
+  })
+
   it('merges profile headers with Harness attribution winning', async () => {
     const server = await mockServer([{ events: textEvents }])
     const ctx = await harness(server.url, {
@@ -948,5 +973,32 @@ describe('abort wiring', () => {
     }
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(server.requests).toHaveLength(1)
+  })
+})
+
+describe('ported from any-llm tests', () => {
+  it('passes provider-reported cached tokens through into usage, net of input', async () => {
+    // any-llm's test_cached_tokens pins that prompt_tokens_details.cached_tokens
+    // is reported (>0) in the completion usage. pi-ai maps that field to
+    // cacheRead and nets it out of input; the adapter surfaces cacheReadTokens.
+    const events = [
+      '{"choices":[{"delta":{"role":"assistant","content":""},"index":0,"finish_reason":null}]}',
+      '{"choices":[{"delta":{"content":"hello"},"index":0,"finish_reason":null}]}',
+      JSON.stringify({
+        choices: [{ delta: {}, index: 0, finish_reason: 'stop' }],
+        usage: {
+          prompt_tokens: 3,
+          completion_tokens: 1,
+          prompt_tokens_details: { cached_tokens: 2 },
+        },
+      }),
+      '[DONE]',
+    ]
+    const server = await mockServer([{ events }])
+    const ctx = await harness(server.url)
+
+    const result = await assemble(ctx, { model: 'deepseek-v4-flash', messages: [] })
+
+    expect(result.usage).toEqual({ inputTokens: 1, outputTokens: 1, cacheReadTokens: 2 })
   })
 })

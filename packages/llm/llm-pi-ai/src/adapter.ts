@@ -51,6 +51,7 @@ import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { toPiContext } from './context.ts'
+import { Semaphore } from './semaphore.ts'
 import { toStreamChunks } from './stream.ts'
 
 /** One resolution's frozen view: the profiles and the collection built from them. */
@@ -190,9 +191,20 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
  */
 export class PiAiAdapter extends LlmAdapter {
   private snapshot: PiAiSnapshot | undefined
+  private readonly limiters = new Map<string, { cap: number; sem: Semaphore }>()
 
   constructor(private readonly config: PiAiAdapterOptions) {
     super()
+  }
+
+  /** The route's semaphore for its configured cap, or none when uncapped. */
+  private limiterFor(provider: string, cap: number | undefined): Semaphore | undefined {
+    if (cap === undefined) return undefined
+    const existing = this.limiters.get(provider)
+    if (existing !== undefined && existing.cap === cap) return existing.sem
+    const sem = new Semaphore(cap)
+    this.limiters.set(provider, { cap, sem })
+    return sem
   }
 
   /**
@@ -289,6 +301,10 @@ export class PiAiAdapter extends LlmAdapter {
     // the one it started with and the next call picks up the new one.
     const snapshot = this.current()
     const profile = this.profileOf(snapshot, options.provider)
+    // A route-level concurrency cap queues this stream before any network or
+    // credential work; the permit is held until the stream settles.
+    const limiter = this.limiterFor(profile.provider, profile.maxConcurrent)
+    const release = limiter === undefined ? undefined : await limiter.acquire(options.signal)
     const model = this.modelOf(snapshot, options.provider, options.model)
     const reasoning = resolveReasoningLevel(
       model,
@@ -360,6 +376,7 @@ export class PiAiAdapter extends LlmAdapter {
       }
       throw error
     } finally {
+      release?.()
       consumer.abort('pi-ai stream consumer stopped')
     }
   }

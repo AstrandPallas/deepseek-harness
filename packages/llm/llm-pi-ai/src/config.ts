@@ -163,6 +163,12 @@ export interface PiAiProviderProfile {
    * requests instead of being rejected by a request-size cap.
    */
   maxRequestImageBytes?: number
+  /**
+   * Cap on concurrently in-flight streams on this route; requests beyond it
+   * queue in arrival order. Omission leaves the route uncapped. Size a local
+   * server route to its slot count (e.g. llama.cpp `-np`).
+   */
+  maxConcurrent?: number
   /** Provider-owned model-request retry policy; omission uses normal mode with five retries. */
   retryPolicy?: RetryPolicyConfig
 }
@@ -312,6 +318,7 @@ const profile = z.object({
   websocketConnectTimeoutMs: z.natural(),
   streamIdleTimeoutMs: z.number().min(Number.MIN_VALUE).max(MAX_TIMER_DELAY_MS).default(DEFAULT_STREAM_IDLE_TIMEOUT_MS),
   maxRequestImageBytes: z.number().step(1).min(1).default(DEFAULT_MAX_REQUEST_IMAGE_BYTES),
+  maxConcurrent: z.number().step(1).min(1),
   retryPolicy: RetryPolicySchema,
 })
 
