@@ -48,6 +48,7 @@ import CordisHostRunner from '@deepseek-ai/dsh-cordis-host-runner'
 import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
+import * as ToolRepoMap from '@deepseek-ai/dsh-tool-repo-map'
 import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
@@ -344,6 +345,18 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'glob and grep are unconditional discovery tools that spawn the packaged ripgrep binary (`@vscode/ripgrep`) through ctx.subprocess as ordinary foreground calls (never background jobs) — no host `rg` install and no shell layer. The catalog uses `sampleOverCapGlobResults: true`; deployments must choose that behavior explicitly. Capped results save the complete formatted list through the optional ctx.spillStore backend; returned locators are follow-up-readable/searchable when the backend exposes local paths in co-located deployments.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-repo-map',
+    dir: 'tool-repo-map',
+    source: 'packages/fs/tool-repo-map/src/index.ts',
+    requires: ['ctx.tools', 'ctx.agent at execution time (session header cwd)', 'git on PATH at execution time for tracked-file listing'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(ToolRepoMap)
+    },
+    note:
+      'repo_map lists the workspace (git-tracked plus unignored untracked files in a repository, a directory walk otherwise), extracts per-language definitions, ranks them with a personalized reference-graph PageRank, and returns a token-budgeted structure map. Read-only: nothing durable beyond the call/result pair.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-terminal',
