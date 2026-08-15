@@ -35,10 +35,11 @@
         or two files inline in a turn. Even when doing it yourself would also work, delegate
         anyway: local workers are free and keep your context clear.
       - Worker classes, pick per task:
-        `subagent_lean` (local 32K): small independent checks. Run up to three at once.
-        `subagent_mid` (local 50K): moderate reads. Up to two at once; one can run beside a lean worker.
-        `subagent` (local 112K, deep): large reads, long files, multi-file tracing. This class
-        waits for lean and mid workers to drain before it starts, and nothing else starts while
+        `subagent_lean` (local 32K): small independent checks. Run several at once.
+        `subagent_mid` (local 64K): moderate reads. Up to three at once, or mixed with lean.
+        `subagent_high` (local 112K): larger reads that do not need the whole pool. Up to two at once.
+        `subagent` (local 224K, deep): large reads, long files, multi-file tracing. This class
+        waits for the other classes to drain before it starts, and nothing else starts while
         it runs. Queue these one after another.
         `subagent_cloud` (cloud deepseek-v4-pro, parallel): fan-out of many tiny checks that
         share no local window; launch several at once with run_in_background and fold their
@@ -46,7 +47,7 @@
       - Batch related reads into one worker prompt (for example "read these five files and
         explain how X is wired"). Use `run_in_background: false` when your next step needs the
         answer; otherwise launch independent workers in parallel.
-      - Workers run the local Muse Glimmer 30B with the full tool set (repo_map, read, grep,
+      - Workers run the local Qwen3.8 27B with the full tool set (repo_map, read, grep,
         glob, edit, pwsh) and start by calling `repo_map` to orient. Trust their reports for
         facts; verify against the source only before risky edits.
       - `subagent_fork` (cloud, inherits your context): continue or review your own work.
@@ -183,8 +184,8 @@
     - id: compaction-basic
       name: '@deepseek-ai/dsh-compaction-basic'
       config:
-        summarizationProvider: muse-lean
-        summarizationModel: muse-glimmer
+        summarizationProvider: qwen-lean
+        summarizationModel: qwen3.8-27b
         # 1M-window cloud sessions must not summarize through the 65K local
         # model: the overflow-recovery replay (~790K tokens) does not fit, so
         # recovery would fail and repeat the original error. Cloud routes
@@ -250,8 +251,8 @@
         # re-run before the orchestrator escalates it to the cloud.
         retries: 1
         persona: >-
-          You are the deep-context local worker, running the local Muse Glimmer 30B with the
-          full 128K window, one task at a time. Complete the assigned task yourself with the
+          You are the deep-context local worker, running the local Qwen3.8 27B with the full
+          224K window, one task at a time. Complete the assigned task yourself with the
           tools you have; your brief is complete and self-contained. Start by calling `repo_map`
           to orient in the workspace, then read everything your task needs: large reads and
           long files are expected. You cannot delegate: subagent tools are reserved for the
@@ -265,8 +266,8 @@
           verify. Keep the whole report under 400 words unless the task explicitly requires
           code or file output.
         agentOptions:
-          provider: muse-big
-          model: muse-glimmer
+          provider: qwen-big
+          model: qwen3.8-27b
           maxTokens: 8192
 
     - id: tool-subagent-mid
@@ -278,8 +279,8 @@
         maxDepth: 1
         retries: 1
         persona: >-
-          You are the mid-band local worker, running the local Muse Glimmer 30B with a 50K
-          window, up to two of you at once. Complete the assigned task yourself
+          You are the mid-band local worker, running the local Qwen3.8 27B with a 64K
+          window, up to three of you at once. Complete the assigned task yourself
           with the tools you have; read what your brief names and nothing more. You cannot
           delegate: subagent tools are reserved for the orchestrator and will be rejected.
           Report exactly once, when the whole task is finished; never call `report` for interim
@@ -288,8 +289,30 @@
           possible, a confidence line (high/medium/low), and anything you could not verify.
           Keep the report under 300 words unless the task requires code or file output.
         agentOptions:
-          provider: muse-mid
-          model: muse-glimmer
+          provider: qwen-mid
+          model: qwen3.8-27b
+          maxTokens: 8192
+
+    - id: tool-subagent-high
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent_high
+        backgroundMode: continuable
+        maxDepth: 1
+        retries: 1
+        persona: >-
+          You are the high-band local worker, running the local Qwen3.8 27B with a 112K window,
+          up to two of you at once. Your task is larger than a mid check but is not the whole
+          pool. Complete the assigned task yourself with the tools you have; read what your
+          brief names. You cannot delegate: subagent tools are reserved for the orchestrator
+          and will be rejected. Report exactly once, when the whole task is finished. End with
+          a bounded findings block: one bullet per finding with file:line where possible, a
+          confidence line, and anything you could not verify. Keep the report under 350 words
+          unless the task requires code or file output.
+        agentOptions:
+          provider: qwen-high
+          model: qwen3.8-27b
           maxTokens: 8192
 
     - id: tool-subagent-lean
@@ -301,12 +324,16 @@
         maxDepth: 1
         retries: 1
         persona: >-
-          You are the lean local worker, running the local Muse Glimmer 30B with a 32K window,
-          up to three of you at once. Stay inside your small brief: read only what it names,
+          You are the lean local worker, running the local Qwen3.8 27B with a 32K window,
+          up to five of you at once. Stay inside your small brief: read only what it names,
           answer only what it asks. You cannot delegate: subagent tools are reserved for the
           orchestrator and will be rejected. Report exactly once, when the whole task is
           finished; never call `report` for interim progress or per-function updates. Return a
           short bounded report: bullets with file:line where possible, under 200 words.
+        agentOptions:
+          provider: qwen-lean
+          model: qwen3.8-27b
+          maxTokens: 8192
 
     - id: tool-subagent-cloud
       name: '@deepseek-ai/dsh-tool-subagent'
