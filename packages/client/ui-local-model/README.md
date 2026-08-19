@@ -1,5 +1,7 @@
 # ui-local-model
 
+English | [中文](README.zh.md)
+
 Session-header toggle that stops and starts the local model server over the `/local-model` command channel. The stop path exists so a user can free the GPU (for gaming); the start path reloads it.
 
 ## Model Experience
