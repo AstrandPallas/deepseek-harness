@@ -204,6 +204,9 @@
       config:
         summarizationProvider: qwen-lean
         summarizationModel: qwen3.8-27b
+        # Compact local workers at half their window (default 0.8 was too high:
+        # qwen-big only compacted at ~179K, so its 175K context never triggered).
+        thresholdRatio: 0.5
         # 1M-window cloud sessions must not summarize through the 65K local
         # model: the overflow-recovery replay (~790K tokens) does not fit, so
         # recovery would fail and repeat the original error. Cloud routes
