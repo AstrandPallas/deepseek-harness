@@ -268,7 +268,7 @@
         agentOptions:
           provider: qwen-big
           model: qwen3.8-27b
-          maxTokens: 8192
+          maxTokens: 32768
 
     - id: tool-subagent-mid
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -291,7 +291,7 @@
         agentOptions:
           provider: qwen-mid
           model: qwen3.8-27b
-          maxTokens: 8192
+          maxTokens: 16384
 
     - id: tool-subagent-high
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -313,7 +313,7 @@
         agentOptions:
           provider: qwen-high
           model: qwen3.8-27b
-          maxTokens: 8192
+          maxTokens: 16384
 
     - id: tool-subagent-lean
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -333,7 +333,7 @@
         agentOptions:
           provider: qwen-lean
           model: qwen3.8-27b
-          maxTokens: 8192
+          maxTokens: 16384
 
     - id: tool-subagent-cloud
       name: '@deepseek-ai/dsh-tool-subagent'
