@@ -71,7 +71,7 @@ async function harness(): Promise<Harness> {
 }
 
 async function run(test: Harness, suffix: string): Promise<{ kind: string; text?: string }> {
-  const settled = await test.ctx.commands.execute(test.agent, `/local-model${suffix}`, new AbortController().signal)
+  const settled = await test.ctx.commands.execute(test.agent, `/local-model${suffix}`, [], new AbortController().signal)
   if (settled === undefined) throw new Error('local-model command was not registered')
   return settled.result
 }
