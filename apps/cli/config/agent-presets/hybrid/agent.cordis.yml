@@ -268,7 +268,7 @@
         agentOptions:
           provider: qwen-big
           model: qwen3.8-27b
-          maxTokens: 32768
+          maxTokens: 16384
 
     - id: tool-subagent-mid
       name: '@deepseek-ai/dsh-tool-subagent'
