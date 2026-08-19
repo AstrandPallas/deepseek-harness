@@ -30,9 +30,9 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  stopCommand: z.string().default("Set-Content 'C:/LocalModel/qwen/watchdog.stop' 'stop'; taskkill /IM llama-server.exe /F 2>&1 | Out-Null; if (Test-Path 'C:/LocalModel/qwen/watchdog.pid') { $wd = Get-Content 'C:/LocalModel/qwen/watchdog.pid'; Stop-Process -Id ([int]$wd) -Force -ErrorAction SilentlyContinue }; Write-Output 'local model stopped'"),
+  stopCommand: z.string().default("Set-Content 'C:/LocalModel/qwen/watchdog.stop' 'stop'; taskkill /IM ninfer-serve.exe /F 2>&1 | Out-Null; if (Test-Path 'C:/LocalModel/qwen/watchdog.pid') { $wd = Get-Content 'C:/LocalModel/qwen/watchdog.pid'; Stop-Process -Id ([int]$wd) -Force -ErrorAction SilentlyContinue }; Write-Output 'local model stopped'"),
   startCommand: z.string().default("Remove-Item 'C:/LocalModel/qwen/watchdog.stop' -ErrorAction SilentlyContinue; Start-Process powershell -ArgumentList @('-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File','G:/LocalModel/watchdog-llama.ps1'); Write-Output 'local model watchdog started'"),
-  statusCommand: z.string().default("if (Get-Process -Name 'llama-server' -ErrorAction SilentlyContinue) { 'running' } else { 'stopped' }"),
+  statusCommand: z.string().default("if (Get-Process -Name 'ninfer-serve' -ErrorAction SilentlyContinue) { 'running' } else { 'stopped' }"),
   timeoutMs: z.number().default(120000),
 })
 
