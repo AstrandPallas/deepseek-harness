@@ -54,7 +54,7 @@ export function apply(ctx: ClientContext): void {
       toggle: async (sessionId: SessionId) => {
         const running = store.getSnapshot().running
         const line = running ? '/local-model stop' : '/local-model start'
-        const result = await ctx.remote.commands.execute(sessionId, line)
+        const result = await ctx.remote.commands.execute(sessionId, line, [])
         if (!result.ok) return `${result.error.message} (${result.error.code})`
         if (result.value === undefined) return `unknown command: ${line}`
         store.update((state) => { state.running = !running })
