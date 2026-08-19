@@ -50,6 +50,12 @@
       - Workers run the local Qwen3.8 27B with the full tool set (repo_map, read, grep,
         glob, edit, pwsh) and start by calling `repo_map` to orient. Trust their reports for
         facts; verify against the source only before risky edits.
+      - Source navigation uses the codebase-memory MCP tools (`mcp__cbm__*`): first
+        `mcp__cbm__index_repository(repo_path=...)` to index a target source tree, then
+        `mcp__cbm__search_graph`, `mcp__cbm__trace_call_path`, and `mcp__cbm__get_code_snippet`
+        to navigate it — one graph query replaces many grep/read cycles. Prefer them over grep
+        for structural questions (callers, call chains, impact analysis); use `read`/`grep` for
+        exact text, edits, and disassembly (cbm indexes source only, not binaries).
       - `subagent_fork` (cloud, inherits your context): continue or review your own work.
       Report handling: a running worker may stream interim `subagent-report` notices. These are
       progress only, never a request for you to act. Do not reply to them, even to acknowledge;
