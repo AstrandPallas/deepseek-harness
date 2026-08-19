@@ -75,15 +75,17 @@
 # publish `DSH_WEB_URL`/`DSH_WEB_MODE`, and a host row that injects a service is
 # the criterion for host-plane ownership — injection resolves before any session
 # exists, so there is no agent to key by. Behind a preset realm those variables
-# never reached the model's shell at all. Both shell tools consume the host
-# registry from here; their executors (`bash-sandbox`/`pwsh-sandbox`) are
-# host-plane too.
+# never reached the model's shell at all. `tool-bash` consumes the host
+# `bash-sandbox` executor; `tool-pwsh-persistent` resolves the host `terminals`
+# registry and its pwsh-dialect backend, both registered in the base bundle, so
+# one warm PowerShell shell per agent lives process-wide like the catalog it
+# joins instead of spawning a fresh `powershell.exe` per command.
 - id: tool-bash
   name: '@deepseek-ai/dsh-tool-bash'
   disabled: !!js process.platform === 'win32'
 
-- id: tool-pwsh
-  name: '@deepseek-ai/dsh-tool-pwsh'
+- id: tool-pwsh-persistent
+  name: '@deepseek-ai/dsh-tool-pwsh-persistent'
   disabled: !!js process.platform !== 'win32'
 
 # ── filesystem ──────────────────────────────────────────────────────────────
@@ -100,6 +102,16 @@
 
 - id: tool-repo-map
   name: '@deepseek-ai/dsh-tool-repo-map'
+
+- id: mcp-cbm
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    transport: stdio
+    serverName: cbm
+    command: C:/LocalModel/cbm/bin/codebase-memory-mcp.exe
+    cwd: G:/LocalModel/deepseek-harness
+    env:
+      CBM_CACHE_DIR: C:/Users/matte/.cbm-cache
 
 # ── background jobs ────────────────────────────────────────────────────────
 

@@ -250,6 +250,24 @@
       name: '@deepseek-ai/dsh-tool-pwsh'
       disabled: !!js process.platform !== 'win32'
 
+    # The persistent PTY stack, process-wide: one terminal registry per host
+    # plus the local backend behind it, registered under the `shell` backend
+    # type with the pwsh dialect. The backend gates off non-win32 like
+    # `tool-pwsh` (a POSIX host would also need pwsh installed); hosts keep
+    # the registry either way. Presets that want an entry-local registry (see
+    # the `minimal` preset) isolate `terminals` and mount their own backend.
+    # `timeoutMs` matches the persistent tool's command deadline so long
+    # commands are bounded by the tool, not the backend's send wait.
+    - id: terminals
+      name: '@deepseek-ai/dsh-terminal'
+
+    - id: terminal-pwsh-backend
+      name: '@deepseek-ai/dsh-terminal-bash'
+      disabled: !!js process.platform !== 'win32'
+      config:
+        shellDialect: pwsh
+        timeoutMs: 300000
+
     - id: tool-jobs
       name: '@deepseek-ai/dsh-tool-jobs'
 
