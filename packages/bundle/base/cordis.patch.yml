@@ -274,6 +274,9 @@
     - id: command-feedback
       name: '@deepseek-ai/dsh-command-feedback'
 
+    - id: command-local-model
+      name: '@deepseek-ai/dsh-command-local-model'
+
     - id: goal
       name: '@deepseek-ai/dsh-goal'
 
