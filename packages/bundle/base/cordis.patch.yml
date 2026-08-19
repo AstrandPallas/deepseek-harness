@@ -76,6 +76,20 @@
     # exhaust first. Dormant until a deployment supplies fallback rules.
     - id: llm-fallback
       name: '@deepseek-ai/dsh-llm-fallback'
+      config:
+        rules:
+          - provider: qwen-lean
+            toProvider: deepseek-official
+            toModel: deepseek-v4-pro
+          - provider: qwen-mid
+            toProvider: deepseek-official
+            toModel: deepseek-v4-pro
+          - provider: qwen-high
+            toProvider: deepseek-official
+            toModel: deepseek-v4-pro
+          - provider: qwen-big
+            toProvider: deepseek-official
+            toModel: deepseek-v4-pro
 
     # Declarative role-to-route routing. Dormant until a deployment supplies
     # rules; a rules block replaces scattered per-tool agentOptions.
