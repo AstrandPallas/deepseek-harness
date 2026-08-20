@@ -30,14 +30,14 @@
 }
 
 .dot[data-running='true'] {
-  background: var(--dsw-positive, currentColor);
+  background: var(--dsw-alias-state-success-primary, currentColor);
 }
 
 .dot[data-running='false'] {
-  background: var(--dsw-negative, currentColor);
+  background: var(--dsw-alias-state-error-primary, currentColor);
 }
 
 .error {
   font-size: 12px;
-  color: var(--dsw-negative, currentColor);
+  color: var(--dsw-alias-state-error-primary, currentColor);
 }
