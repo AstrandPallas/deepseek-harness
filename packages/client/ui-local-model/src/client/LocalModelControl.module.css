@@ -33,6 +33,10 @@
   background: var(--dsw-positive, currentColor);
 }
 
+.dot[data-running='false'] {
+  background: var(--dsw-negative, currentColor);
+}
+
 .error {
   font-size: 12px;
   color: var(--dsw-negative, currentColor);
