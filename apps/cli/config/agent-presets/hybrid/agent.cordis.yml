@@ -298,7 +298,7 @@
             - pwsh
             - todo_write
             - mcp__cbm__search_graph
-            - mcp__cbm__trace_call_path
+            - mcp__cbm__trace_path
             - mcp__cbm__get_code_snippet
             - mcp__cbm__search_code
             - mcp__cbm__index_repository
@@ -339,7 +339,7 @@
             - pwsh
             - todo_write
             - mcp__cbm__search_graph
-            - mcp__cbm__trace_call_path
+            - mcp__cbm__trace_path
             - mcp__cbm__get_code_snippet
             - mcp__cbm__search_code
             - mcp__cbm__index_repository
@@ -379,7 +379,7 @@
             - pwsh
             - todo_write
             - mcp__cbm__search_graph
-            - mcp__cbm__trace_call_path
+            - mcp__cbm__trace_path
             - mcp__cbm__get_code_snippet
             - mcp__cbm__search_code
             - mcp__cbm__index_repository
@@ -417,7 +417,7 @@
             - pwsh
             - todo_write
             - mcp__cbm__search_graph
-            - mcp__cbm__trace_call_path
+            - mcp__cbm__trace_path
             - mcp__cbm__get_code_snippet
             - mcp__cbm__search_code
             - mcp__cbm__index_repository
