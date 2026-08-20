@@ -226,8 +226,8 @@
       name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
       config:
         thresholdChars: 2048
-        headChars: 2048
-        tailChars: 512
+        headChars: 1024
+        tailChars: 256
 
 # ── delegation and workflows ────────────────────────────────────────────────
 
@@ -287,6 +287,24 @@
           provider: qwen-big
           model: qwen3.8-27b
           maxTokens: 16384
+        toolFilter:
+          allow:
+            - read
+            - write
+            - edit
+            - grep
+            - glob
+            - repo_map
+            - pwsh
+            - todo_write
+            - mcp__cbm__search_graph
+            - mcp__cbm__trace_call_path
+            - mcp__cbm__get_code_snippet
+            - mcp__cbm__search_code
+            - mcp__cbm__index_repository
+            - mcp__cbm__list_projects
+            - mcp__cbm__get_graph_schema
+            - mcp__cbm__query_graph
 
     - id: tool-subagent-mid
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -310,6 +328,24 @@
           provider: qwen-mid
           model: qwen3.8-27b
           maxTokens: 16384
+        toolFilter:
+          allow:
+            - read
+            - write
+            - edit
+            - grep
+            - glob
+            - repo_map
+            - pwsh
+            - todo_write
+            - mcp__cbm__search_graph
+            - mcp__cbm__trace_call_path
+            - mcp__cbm__get_code_snippet
+            - mcp__cbm__search_code
+            - mcp__cbm__index_repository
+            - mcp__cbm__list_projects
+            - mcp__cbm__get_graph_schema
+            - mcp__cbm__query_graph
 
     - id: tool-subagent-high
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -332,6 +368,24 @@
           provider: qwen-high
           model: qwen3.8-27b
           maxTokens: 16384
+        toolFilter:
+          allow:
+            - read
+            - write
+            - edit
+            - grep
+            - glob
+            - repo_map
+            - pwsh
+            - todo_write
+            - mcp__cbm__search_graph
+            - mcp__cbm__trace_call_path
+            - mcp__cbm__get_code_snippet
+            - mcp__cbm__search_code
+            - mcp__cbm__index_repository
+            - mcp__cbm__list_projects
+            - mcp__cbm__get_graph_schema
+            - mcp__cbm__query_graph
 
     - id: tool-subagent-lean
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -352,6 +406,24 @@
           provider: qwen-lean
           model: qwen3.8-27b
           maxTokens: 16384
+        toolFilter:
+          allow:
+            - read
+            - write
+            - edit
+            - grep
+            - glob
+            - repo_map
+            - pwsh
+            - todo_write
+            - mcp__cbm__search_graph
+            - mcp__cbm__trace_call_path
+            - mcp__cbm__get_code_snippet
+            - mcp__cbm__search_code
+            - mcp__cbm__index_repository
+            - mcp__cbm__list_projects
+            - mcp__cbm__get_graph_schema
+            - mcp__cbm__query_graph
 
     - id: tool-subagent-cloud
       name: '@deepseek-ai/dsh-tool-subagent'
