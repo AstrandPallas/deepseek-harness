@@ -14,7 +14,7 @@ export type LocalModelControlProps =
  * toggles it through /local-model stop|start; failures surface as a status
  * line (English, per the error-surface policy).
  */
-export function LocalModelControl({ sessionId, useLocalModel, toggle, t }: LocalModelControlProps) {
+export function LocalModelControl({ sessionId, useLocalModel, toggle, probe, t }: LocalModelControlProps) {
   const running = useLocalModel(state => state.running)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -26,6 +26,10 @@ export function LocalModelControl({ sessionId, useLocalModel, toggle, t }: Local
       aliveRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    void probe(sessionId)
+  }, [probe, sessionId])
 
   const onClick = (): void => {
     setBusy(true)

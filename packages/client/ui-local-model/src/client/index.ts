@@ -30,6 +30,8 @@ export interface LocalModelInjected {
   hooks: { localModel: ObservableSnapshot<LocalModelState> }
   /** Stop or start the model, returning null on admission or a failure line. */
   toggle: (sessionId: SessionId) => Promise<string | null>
+  /** Reconcile the shared state with the live server on mount. */
+  probe: (sessionId: SessionId) => Promise<void>
 }
 
 /** Required services: the header slot registry, commands Remote, and locale registry. */
@@ -59,6 +61,15 @@ export function apply(ctx: ClientContext): void {
         if (result.value === undefined) return `unknown command: ${line}`
         store.update((state) => { state.running = !running })
         return null
+      },
+      probe: async (sessionId: SessionId) => {
+        const result = await ctx.remote.commands.execute(sessionId, '/local-model status', [])
+        if (!result.ok || result.value === undefined) return
+        const { result: cmdResult } = result.value
+        if (cmdResult.kind !== 'success') return
+        const { text } = cmdResult
+        if (text === undefined) return
+        store.update((state) => { state.running = text.includes('running') })
       },
     }),
   }, LocalModelControl))
