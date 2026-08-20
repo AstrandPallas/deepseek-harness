@@ -6,9 +6,9 @@
  * @module @deepseek-ai/dsh-command-local-model
  */
 
+import { spawn } from 'node:child_process'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
-import type { ShellExecutor } from '@deepseek-ai/dsh-shell'
 import z from '@deepseek-ai/schemastery'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -50,29 +50,31 @@ function commandFor(action: string, config: ResolvedConfig): string | undefined 
 }
 
 /** Run one control command through the optional shell seam and fold it into a CommandResult. */
-async function runControl(ctx: Context, command: string, timeoutMs: number): Promise<CommandResult> {
-  const shell = ctx.get('shell') as ShellExecutor | undefined
-  if (shell === undefined) {
-    return { kind: 'error', text: 'The shell service is not mounted, so the local model server cannot be controlled.' }
-  }
-  const spec = shell.resolve({ command, timeoutMs })
-  const result = await shell.run(spec)
-  const detail = [result.stdout.text.trim(), result.stderr.text.trim()].filter(text => text.length > 0).join('\n')
-  if (result.exitCode === 0) {
-    return { kind: 'success', text: detail.length > 0 ? detail : 'Command exited 0.' }
-  }
-  const code = result.exitCode === null ? `signal ${String(result.signal)}` : String(result.exitCode)
+async function runControl(command: string, timeoutMs: number): Promise<CommandResult> {
+  const outcome = await new Promise<{ code: number | null; out: string; err: string }>((resolve) => {
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], { windowsHide: true })
+    let out = ''
+    let err = ''
+    child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString() })
+    child.stderr.on('data', (chunk: Buffer) => { err += chunk.toString() })
+    const timer = setTimeout(() => child.kill(), timeoutMs)
+    child.once('error', (error) => { clearTimeout(timer); resolve({ code: null, out, err: `failed to spawn powershell: ${String(error)}` }) })
+    child.once('close', (code) => { clearTimeout(timer); resolve({ code, out, err }) })
+  })
+  const detail = [outcome.out.trim(), outcome.err.trim()].filter(text => text.length > 0).join('\n')
+  if (outcome.code === 0) return { kind: 'success', text: detail.length > 0 ? detail : 'Command exited 0.' }
+  const code = outcome.code === null ? 'signal' : String(outcome.code)
   return { kind: 'error', text: `Command exited ${code}${detail.length > 0 ? `:\n${detail}` : ''}` }
 }
 
 /** Validate the action and run its command, or report usage. */
-function execute(invocation: CommandInvocation, ctx: Context, config: ResolvedConfig): Promise<CommandResult> {
+function execute(invocation: CommandInvocation, config: ResolvedConfig): Promise<CommandResult> {
   const action = invocation.rawInput.trim().toLowerCase()
   const command = commandFor(action, config)
   if (command === undefined) {
     return Promise.resolve({ kind: 'error', text: `Unknown action "${action}". ${USAGE}` })
   }
-  return runControl(ctx, command, config.timeoutMs)
+  return runControl(command, config.timeoutMs)
 }
 
 /** Register the global `/local-model` command. */
@@ -83,6 +85,6 @@ export function apply(ctx: Context, config: Config): void {
     description: 'stop, start, or check the local model server (stop frees the GPU)',
     input: { hint: '<stop|start|status>' },
     recordInput: false,
-    handler: invocation => execute(invocation, ctx, resolved),
+    handler: invocation => execute(invocation, resolved),
   })
 }
