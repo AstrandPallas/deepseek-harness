@@ -95,7 +95,7 @@ describe('@deepseek-ai/dsh-command-local-model', () => {
     runLog.length = 0
     const test = await harness()
     await expect(run(test, ' stop ')).resolves.toEqual({ kind: 'success', text: 'Command exited 0.' })
-    expect(runLog).toEqual(["Set-Content 'C:/LocalModel/qwen/watchdog.stop' 'stop'; taskkill /IM ninfer-serve.exe /F 2>&1 | Out-Null; if (Test-Path 'C:/LocalModel/qwen/watchdog.pid') { $wd = Get-Content 'C:/LocalModel/qwen/watchdog.pid'; Stop-Process -Id ([int]$wd) -Force -ErrorAction SilentlyContinue }; Write-Output 'local model stopped'"])
+    expect(runLog).toEqual(["Set-Content 'C:/LocalModel/qwen/watchdog.stop' 'stop'; taskkill /IM ninfer-serve.exe /F 2>&1 | Out-Null; if (Test-Path 'C:/LocalModel/qwen/watchdog.pid') { $wd = Get-Content 'C:/LocalModel/qwen/watchdog.pid'; Stop-Process -Id ([int]$wd) -Force -ErrorAction SilentlyContinue }; Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList @('-NoProfile','-Command','nvidia-smi -pl 575') | Out-Null; Write-Output 'local model stopped'"])
   })
 
   it('rejects an unknown action without running anything', async () => {
